@@ -62,11 +62,6 @@ export class AIService {
     const timeoutId = setTimeout(() => controller.abort(), this.options.timeout!);
     
     try {
-      // 检查是否配置了API密钥
-      if (!process.env.OPENAI_API_KEY) {
-        throw new AIError('AUTH_ERROR', 'OpenAI API key is not configured');
-      }
-      
       // 这里是OpenAI API调用的代码
       // 在实际使用时，需要安装openai包：npm install openai
       // import OpenAI from 'openai';
@@ -75,6 +70,9 @@ export class AIService {
       const formattedContext = this.formatPrompt(message, context);
       
       // 模拟OpenAI API调用（实际使用时取消注释下面的代码）
+      // if (!process.env.OPENAI_API_KEY) {
+      //   throw new AIError('AUTH_ERROR', 'OpenAI API key is not configured');
+      // }
       // const completion = await openai.chat.completions.create({
       //   model: this.options.model!,
       //   messages: [{ role: 'user', content: formattedContext }],

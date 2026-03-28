@@ -2,6 +2,7 @@ import { WebSocket } from 'ws';
 import { ChatHandler } from './chatHandler';
 import { ChatMessage, WebSocketMessage } from '../../models/types';
 import { chatStore } from '../../store/chatStore';
+import { aiService } from '../../services/aiService';
 
 // 模拟WebSocket连接
 class MockWebSocket {
@@ -13,23 +14,39 @@ class MockWebSocket {
   }
 }
 
+// 模拟aiService
+jest.mock('../../services/aiService', () => {
+  return {
+    aiService: {
+      generateResponse: jest.fn().mockResolvedValue('Mock AI response'),
+      getFriendlyError: jest.fn().mockReturnValue('Friendly error message'),
+    },
+    AIError: jest.fn().mockImplementation((code: string, message: string) => {
+      const error = new Error(message);
+      (error as any).code = code;
+      return error;
+    }),
+  };
+});
+
 describe('ChatHandler', () => {
   let mockWebSocket: any;
   let chatHandler: ChatHandler;
+  const deviceId = 'test-device';
   const sessionId = 'test-session';
 
-  beforeEach(() => {
+  beforeEach(async () => {
     mockWebSocket = new MockWebSocket();
-    chatHandler = new ChatHandler(mockWebSocket as WebSocket, sessionId);
+    chatHandler = new ChatHandler(mockWebSocket as WebSocket, deviceId);
     // 清理聊天存储
-    chatStore.deleteSession(sessionId);
+    await chatStore.deleteSession(sessionId);
   });
 
-  afterEach(() => {
-    chatStore.deleteSession(sessionId);
+  afterEach(async () => {
+    await chatStore.deleteSession(sessionId);
   });
 
-  test('should handle chat:send message', async () => {
+  test('should handle chat:send message with sessionId', async () => {
     const chatMessage: ChatMessage = {
       id: 'test-message-1',
       role: 'user',
@@ -42,7 +59,10 @@ describe('ChatHandler', () => {
       id: 'test-msg-1',
       timestamp: Date.now(),
       deviceId: 'test-device',
-      payload: chatMessage,
+      payload: {
+        sessionId,
+        message: chatMessage,
+      },
     };
 
     // 处理消息
@@ -54,6 +74,33 @@ describe('ChatHandler', () => {
     expect(mockWebSocket.sentMessages[0].payload).toEqual(chatMessage);
     expect(mockWebSocket.sentMessages[1].type).toBe('chat:message');
     expect(mockWebSocket.sentMessages[1].payload.role).toBe('assistant');
+  });
+
+  test('should return error for chat:send message without sessionId', async () => {
+    const chatMessage: ChatMessage = {
+      id: 'test-message-1',
+      role: 'user',
+      content: 'Hello, AI!',
+      timestamp: new Date().toISOString(),
+    };
+
+    const message: WebSocketMessage = {
+      type: 'chat:send',
+      id: 'test-msg-1',
+      timestamp: Date.now(),
+      deviceId: 'test-device',
+      payload: {
+        message: chatMessage,
+      },
+    };
+
+    // 处理消息
+    await chatHandler.handleChatMessage(message);
+
+    // 验证错误消息已发送
+    expect(mockWebSocket.sentMessages).toHaveLength(1);
+    expect(mockWebSocket.sentMessages[0].type).toBe('error');
+    expect(mockWebSocket.sentMessages[0].payload.message).toBe('sessionId is required for chat messages');
   });
 
   test('should handle chat:history message', async () => {
@@ -73,7 +120,9 @@ describe('ChatHandler', () => {
       id: 'test-msg-2',
       timestamp: Date.now(),
       deviceId: 'test-device',
-      payload: null,
+      payload: {
+        sessionId,
+      },
     };
 
     // 处理消息
@@ -102,7 +151,9 @@ describe('ChatHandler', () => {
       id: 'test-msg-3',
       timestamp: Date.now(),
       deviceId: 'test-device',
-      payload: null,
+      payload: {
+        sessionId,
+      },
     };
 
     // 处理消息
@@ -125,10 +176,13 @@ describe('ChatHandler', () => {
       timestamp: Date.now(),
       deviceId: 'test-device',
       payload: {
-        id: 'test-invalid-msg',
-        role: 'user',
-        content: '', // 空内容，这是无效的消息格式
-        timestamp: new Date().toISOString()
+        sessionId,
+        message: {
+          id: 'test-invalid-msg',
+          role: 'user',
+          content: '', // 空内容，这是无效的消息格式
+          timestamp: new Date().toISOString(),
+        },
       },
     };
 
@@ -138,5 +192,82 @@ describe('ChatHandler', () => {
     // 验证错误消息已发送
     expect(mockWebSocket.sentMessages).toHaveLength(1);
     expect(mockWebSocket.sentMessages[0].type).toBe('error');
+  });
+
+  test('should handle AI service error', async () => {
+    // 模拟AI服务错误
+    (aiService.generateResponse as jest.Mock).mockRejectedValue(new Error('AI service error'));
+
+    const chatMessage: ChatMessage = {
+      id: 'test-message-1',
+      role: 'user',
+      content: 'Hello, AI!',
+      timestamp: new Date().toISOString(),
+    };
+
+    const message: WebSocketMessage = {
+      type: 'chat:send',
+      id: 'test-msg-1',
+      timestamp: Date.now(),
+      deviceId: 'test-device',
+      payload: {
+        sessionId,
+        message: chatMessage,
+      },
+    };
+
+    // 处理消息
+    await chatHandler.handleChatMessage(message);
+
+    // 验证错误消息已发送
+    expect(mockWebSocket.sentMessages).toHaveLength(2); // 1个消息确认，1个错误
+    expect(mockWebSocket.sentMessages[1].type).toBe('error');
+  });
+
+  test('should process messages in queue', async () => {
+    const chatMessage1: ChatMessage = {
+      id: 'test-message-1',
+      role: 'user',
+      content: 'Hello, AI!',
+      timestamp: new Date().toISOString(),
+    };
+
+    const chatMessage2: ChatMessage = {
+      id: 'test-message-2',
+      role: 'user',
+      content: 'How are you?',
+      timestamp: new Date().toISOString(),
+    };
+
+    const message1: WebSocketMessage = {
+      type: 'chat:send',
+      id: 'test-msg-1',
+      timestamp: Date.now(),
+      deviceId: 'test-device',
+      payload: {
+        sessionId,
+        message: chatMessage1,
+      },
+    };
+
+    const message2: WebSocketMessage = {
+      type: 'chat:send',
+      id: 'test-msg-2',
+      timestamp: Date.now(),
+      deviceId: 'test-device',
+      payload: {
+        sessionId,
+        message: chatMessage2,
+      },
+    };
+
+    // 并行处理两个消息
+    await Promise.all([
+      chatHandler.handleChatMessage(message1),
+      chatHandler.handleChatMessage(message2),
+    ]);
+
+    // 验证所有消息都已处理
+    expect(mockWebSocket.sentMessages).toHaveLength(4); // 2个消息确认，2个AI响应
   });
 });

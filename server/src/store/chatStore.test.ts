@@ -117,4 +117,49 @@ describe('ChatStore', () => {
     const normalSession = chatStore.getSession(sessionId);
     expect(normalSession).toBeDefined();
   });
+
+  test('should handle concurrent writes', async () => {
+    await chatStore.createSession(sessionId);
+    
+    // 并发添加多条消息
+    const messages: ChatMessage[] = [];
+    for (let i = 0; i < 10; i++) {
+      messages.push({
+        id: `test-message-${i}`,
+        role: 'user',
+        content: `Message ${i}`,
+        timestamp: new Date().toISOString(),
+      });
+    }
+    
+    // 并行添加消息
+    await Promise.all(messages.map(message => chatStore.addMessage(sessionId, message)));
+    
+    // 验证所有消息都被添加
+    const session = chatStore.getSession(sessionId);
+    expect(session?.messages).toHaveLength(10);
+  });
+
+  test('should support pagination in getAllSessions', async () => {
+    // 创建多个会话
+    for (let i = 0; i < 25; i++) {
+      await chatStore.createSession(`session-${i}`);
+    }
+    
+    // 测试第一页，每页10条
+    const firstPage = chatStore.getAllSessions(1, 10);
+    expect(firstPage).toHaveLength(10);
+    
+    // 测试第二页，每页10条
+    const secondPage = chatStore.getAllSessions(2, 10);
+    expect(secondPage).toHaveLength(10);
+    
+    // 测试第三页，每页10条
+    const thirdPage = chatStore.getAllSessions(3, 10);
+    expect(thirdPage).toHaveLength(5); // 剩下的5条
+    
+    // 测试默认分页
+    const defaultPage = chatStore.getAllSessions();
+    expect(defaultPage).toHaveLength(25); // 默认每页100条，所以返回所有25条会话
+  });
 });

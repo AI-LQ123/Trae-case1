@@ -31,76 +31,87 @@ export class ChatHandler {
   }
 
   private async handleSendMessage(message: WebSocketMessage): Promise<void> {
-    const chatMessage = message.payload as ChatMessage;
-    
-    // 确保消息有正确的格式
-    if (!chatMessage.content || !chatMessage.role) {
-      this.sendError('Invalid chat message format');
-      return;
-    }
-
-    // 从消息中获取会话ID，如果没有则使用设备ID
-    const sessionId = this.getSessionIdFromMessage(message);
-
-    // 使用消息队列处理，确保同一会话的消息串行处理
-    await this.processMessageWithQueue(sessionId, async () => {
-      // 获取或创建会话
-      let session = chatStore.getSession(sessionId);
-      if (!session) {
-        session = await chatStore.createSession(sessionId);
+    try {
+      // 使用ChatPayload类型
+      const payload = message.payload as ChatPayload;
+      const chatMessage = payload?.message as ChatMessage;
+      
+      // 确保消息有正确的格式
+      if (!chatMessage || !chatMessage.content || !chatMessage.role) {
+        this.sendError('Invalid chat message format');
+        return;
       }
 
-      // 添加用户消息到会话
-      await chatStore.addMessage(sessionId, chatMessage);
+      // 从消息中获取会话ID
+      const sessionId = this.getSessionIdFromMessage(message);
 
-      // 发送消息确认给客户端
-          this.sendToClient({
-            type: 'chat:message',
-            id: this.generateMessageId(),
-            timestamp: Date.now(),
-            deviceId: 'server',
-            payload: chatMessage,
-          });
+      // 使用消息队列处理，确保同一会话的消息串行处理
+      await this.processMessageWithQueue(sessionId, async () => {
+        // 获取或创建会话
+        let session = chatStore.getSession(sessionId);
+        if (!session) {
+          session = await chatStore.createSession(sessionId);
+        }
 
-      // 如果是用户消息，生成AI响应
-      if (chatMessage.role === 'user') {
-        try {
-          // 获取会话历史作为上下文
-          const context = session.messages.slice(-10);
-          
-          // 生成AI响应
-          const aiResponse = await aiService.generateResponse(chatMessage.content, context);
-          
-          // 创建AI消息
-          const aiMessage: ChatMessage = {
-            id: `ai-${Date.now()}`,
-            role: 'assistant',
-            content: aiResponse,
-            timestamp: new Date().toISOString(),
-          };
-          
-          // 添加AI消息到会话
-          await chatStore.addMessage(sessionId, aiMessage);
-          
-          // 发送AI响应给客户端
-          this.sendToClient({
-            type: 'chat:message',
-            id: this.generateMessageId(),
-            timestamp: Date.now(),
-            deviceId: 'server',
-            payload: aiMessage,
-          });
-        } catch (error) {
-          console.error('Error generating AI response:', error);
-          if (error instanceof AIError) {
-            const friendlyError = aiService.getFriendlyError(error);
-            this.sendError(friendlyError);
-          } else {
-            this.sendError('Failed to generate AI response');
+        // 添加用户消息到会话
+        await chatStore.addMessage(sessionId, chatMessage);
+
+        // 发送消息确认给客户端
+        this.sendToClient({
+          type: 'chat:message',
+          id: this.generateMessageId(),
+          timestamp: Date.now(),
+          deviceId: 'server',
+          payload: chatMessage,
+        });
+
+        // 如果是用户消息，生成AI响应
+        if (chatMessage.role === 'user') {
+          try {
+            // 获取会话历史作为上下文
+            const context = session.messages.slice(-10);
+            
+            // 生成AI响应
+            const aiResponse = await aiService.generateResponse(chatMessage.content, context);
+            
+            // 创建AI消息
+            const aiMessage: ChatMessage = {
+              id: `ai-${Date.now()}`,
+              role: 'assistant',
+              content: aiResponse,
+              timestamp: new Date().toISOString(),
+            };
+            
+            // 添加AI消息到会话
+            await chatStore.addMessage(sessionId, aiMessage);
+            
+            // 发送AI响应给客户端
+            this.sendToClient({
+              type: 'chat:message',
+              id: this.generateMessageId(),
+              timestamp: Date.now(),
+              deviceId: 'server',
+              payload: aiMessage,
+            });
+          } catch (error) {
+            console.error('Error generating AI response:', error);
+            if (error instanceof AIError) {
+              const friendlyError = aiService.getFriendlyError(error);
+              this.sendError(friendlyError);
+            } else {
+              this.sendError('Failed to generate AI response');
+            }
           }
         }
+      });
+    } catch (error) {
+      console.error('Error handling chat message:', error);
+      if (error instanceof Error && error.message === 'sessionId is required for chat:send messages') {
+        this.sendError('sessionId is required for chat messages');
+      } else {
+        this.sendError('Failed to handle chat message');
       }
-    });
+    }
   }
 
   private handleGetHistory(message: WebSocketMessage): void {
@@ -140,10 +151,18 @@ export class ChatHandler {
   }
 
   private getSessionIdFromMessage(message: WebSocketMessage): string {
-    // 从消息payload中获取sessionId，如果没有则使用deviceId
-    if (message.payload && typeof message.payload === 'object' && 'sessionId' in message.payload) {
-      return (message.payload as any).sessionId;
+    // 从消息payload中获取sessionId
+    const payload = message.payload as ChatPayload;
+    if (payload && payload.sessionId) {
+      return payload.sessionId;
     }
+    
+    // 对于chat:send消息，要求客户端显式传递sessionId
+    if (message.type === 'chat:send') {
+      throw new Error('sessionId is required for chat:send messages');
+    }
+    
+    // 对于其他消息类型，使用deviceId作为默认值
     return this.deviceId;
   }
 
@@ -170,13 +189,30 @@ export class ChatHandler {
   }
 
   private async processMessageWithQueue(sessionId: string, handler: () => Promise<void>): Promise<void> {
-    const previous = this.messageQueue.get(sessionId) || Promise.resolve();
+    const previous = this.messageQueue.get(sessionId)?.promise || Promise.resolve();
     const current = previous.then(() => handler());
-    this.messageQueue.set(sessionId, current);
+    
+    // 清除之前的超时计时器
+    const previousEntry = this.messageQueue.get(sessionId);
+    if (previousEntry) {
+      clearTimeout(previousEntry.timeout);
+    }
+    
+    // 设置新的超时计时器
+    const timeout = setTimeout(() => {
+      if (this.messageQueue.get(sessionId)?.promise === current) {
+        console.warn(`Message queue timeout for session ${sessionId}`);
+        this.messageQueue.delete(sessionId);
+      }
+    }, ChatHandler.QUEUE_TIMEOUT);
+    
+    this.messageQueue.set(sessionId, { promise: current, timeout });
+    
     try {
       await current;
     } finally {
-      if (this.messageQueue.get(sessionId) === current) {
+      if (this.messageQueue.get(sessionId)?.promise === current) {
+        clearTimeout(timeout);
         this.messageQueue.delete(sessionId);
       }
     }

@@ -1,11 +1,17 @@
 import WebSocket from 'ws';
 
+// 定义ChatPayload类型
+export interface ChatPayload {
+  sessionId?: string;
+  message?: ChatMessage;
+}
+
 export interface WebSocketMessage {
   type: 'command' | 'event' | 'ping' | 'pong' | 'chat:send' | 'chat:message' | 'chat:history' | 'chat:clear' | 'chat:cleared' | 'error';
   id: string;
   timestamp: number;
   deviceId: string;
-  payload: MessagePayload | ChatMessage | ChatMessage[] | null;
+  payload: MessagePayload | ChatMessage | ChatMessage[] | ChatPayload | null;
 }
 
 export type MessagePayload =
