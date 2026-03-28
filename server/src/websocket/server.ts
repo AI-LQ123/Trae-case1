@@ -48,6 +48,8 @@ export class WebSocketServer {
     this.registerChatHandler();
     // Register task handler
     this.registerTaskHandler();
+    // Register terminal handler
+    this.registerTerminalHandler();
 
     this.setupWebSocketServer();
     this.startHeartbeat();
