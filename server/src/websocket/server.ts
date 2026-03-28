@@ -91,6 +91,17 @@ export class WebSocketServer {
         metadata: { clientIp },
       });
 
+      // 检查WebSocket连接的token验证
+      const token = this.extractTokenFromRequest(req);
+      if (!token) {
+        logger.warn('WebSocket connection without token', {
+          context: 'WebSocketServer',
+          metadata: { clientIp },
+        });
+        ws.close(4001, 'Missing authentication token');
+        return;
+      }
+
       if (this.connectionManager.size() >= this.config.maxConnections!) {
         logger.warn('Max connections reached, closing new connection', {
           context: 'WebSocketServer',
@@ -309,6 +320,27 @@ export class WebSocketServer {
     recent.push(now);
     this.rateLimiter.set(deviceId, recent);
     return true;
+  }
+
+  private extractTokenFromRequest(req: any): string | null {
+    // 从sec-websocket-protocol头中提取token
+    if (req.headers && req.headers['sec-websocket-protocol']) {
+      const protocols = req.headers['sec-websocket-protocol'].split(',');
+      for (const protocol of protocols) {
+        const trimmed = protocol.trim();
+        if (trimmed.startsWith('token-')) {
+          return trimmed.substring(6); // 去掉 'token-' 前缀
+        }
+      }
+    }
+    
+    // 从查询参数中提取token
+    if (req.url && req.url.includes('token=')) {
+      const urlParams = new URLSearchParams(req.url.substring(req.url.indexOf('?')));
+      return urlParams.get('token');
+    }
+    
+    return null;
   }
 
   public close(): void {

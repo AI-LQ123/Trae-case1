@@ -163,6 +163,12 @@ class FileService {
     try {
       this.checkPath(directoryPath);
 
+      // 添加绝对深度上限，防止无限递归
+      const ABSOLUTE_MAX_DEPTH = 10;
+      if (maxDepth > ABSOLUTE_MAX_DEPTH) {
+        maxDepth = ABSOLUTE_MAX_DEPTH;
+      }
+
       if (currentDepth >= maxDepth) {
         return {
           name: path.basename(directoryPath),
