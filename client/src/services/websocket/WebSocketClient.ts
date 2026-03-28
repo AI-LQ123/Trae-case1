@@ -19,8 +19,8 @@ export interface WebSocketMessage {
 export class WebSocketClient {
   private ws: WebSocket | null = null;
   private url: string;
-  private reconnectTimer: NodeJS.Timeout | null = null;
-  private pingTimer: NodeJS.Timeout | null = null;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private pingTimer: ReturnType<typeof setInterval> | null = null;
   private reconnectAttempt = 0;
   private maxReconnectAttempts = 10;
   private baseDelay = 1000;

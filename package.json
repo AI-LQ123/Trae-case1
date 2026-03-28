@@ -15,8 +15,7 @@
     "test:client": "cd client && npm test",
     "lint": "eslint . --ext .ts,.tsx",
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
-    "format": "prettier --write \"**/*.{ts,tsx,json,md}\"",
-    "postinstall": "cd server && npm install && cd ../client && npm install"
+    "format": "prettier --write \"**/*.{ts,tsx,json,md}\""
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^6.0.0",

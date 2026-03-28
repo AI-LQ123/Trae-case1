@@ -44,7 +44,7 @@ const websocketSlice = createSlice({
     setError: (state, action: PayloadAction<string | null>) => {
       state.error = action.payload;
     },
-    resetState: state => {
+    resetState: () => {
       return initialState;
     },
   },

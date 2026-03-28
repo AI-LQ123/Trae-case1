@@ -1,45 +1,60 @@
 import { Server as HttpServer } from 'http';
 import WebSocket, { WebSocket as WSWebSocket } from 'ws';
-import { WebSocketMessage, Connection } from '../models/types';
+import { WebSocketMessage } from '../models/types';
+import { ConnectionManager } from './connectionManager';
+import { MessageRouter } from './messageRouter';
+import { WebSocketServerConfig, ConnectionStatus } from './types';
 
 export class WebSocketServer {
   private wss: WebSocket.Server;
-  private connections: Map<string, Connection> = new Map();
+  private connectionManager: ConnectionManager;
+  private messageRouter: MessageRouter;
   private heartbeatInterval: NodeJS.Timeout | null = null;
+  private config: WebSocketServerConfig;
 
-  constructor(server: HttpServer) {
+  constructor(server: HttpServer, config: WebSocketServerConfig = {}) {
+    this.config = {
+      port: 8080,
+      heartbeatInterval: 30000,
+      connectionTimeout: 60000,
+      maxConnections: 100,
+      ...config,
+    };
+
     this.wss = new WebSocket.Server({ server });
+    this.connectionManager = new ConnectionManager();
+    this.messageRouter = new MessageRouter();
+
     this.setupWebSocketServer();
     this.startHeartbeat();
   }
 
   private setupWebSocketServer(): void {
     this.wss.on('connection', (ws: WSWebSocket, req) => {
-      console.log(`New WebSocket connection from ${req.socket.remoteAddress}`);
+      const clientIp = req.socket.remoteAddress;
+      console.log(`New WebSocket connection from ${clientIp}`);
+
+      if (this.connectionManager.size() >= this.config.maxConnections!) {
+        console.warn('Max connections reached, closing new connection');
+        ws.close(4000, 'Max connections reached');
+        return;
+      }
 
       const deviceId = this.generateDeviceId();
-      const connection: Connection = {
-        deviceId,
-        ws,
-        connectedAt: Date.now(),
-        lastPing: Date.now(),
-        isAuthenticated: false,
-      };
-
-      this.connections.set(deviceId, connection);
+      const connection = this.connectionManager.addConnection(deviceId, ws);
 
       ws.on('message', (data: WebSocket.RawData) => {
         this.handleMessage(deviceId, data);
       });
 
-      ws.on('close', () => {
-        console.log(`Connection closed: ${deviceId}`);
-        this.connections.delete(deviceId);
+      ws.on('close', (code, reason) => {
+        console.log(`Connection closed: ${deviceId}, code: ${code}, reason: ${reason}`);
+        this.connectionManager.removeConnection(deviceId);
       });
 
       ws.on('error', (error: Error) => {
         console.error(`WebSocket error for ${deviceId}:`, error);
-        this.connections.delete(deviceId);
+        this.connectionManager.removeConnection(deviceId);
       });
 
       this.sendToDevice(deviceId, {
@@ -58,10 +73,10 @@ export class WebSocketServer {
     });
   }
 
-  private handleMessage(deviceId: string, data: WebSocket.RawData): void {
+  private async handleMessage(deviceId: string, data: WebSocket.RawData): Promise<void> {
     try {
       const message: WebSocketMessage = JSON.parse(data.toString());
-      const connection = this.connections.get(deviceId);
+      const connection = this.connectionManager.getConnection(deviceId);
 
       if (!connection) {
         console.warn(`Message from unknown device: ${deviceId}`);
@@ -69,7 +84,7 @@ export class WebSocketServer {
       }
 
       if (message.type === 'ping') {
-        connection.lastPing = Date.now();
+        this.connectionManager.updateLastPing(deviceId);
         this.sendToDevice(deviceId, {
           type: 'pong',
           id: this.generateMessageId(),
@@ -83,7 +98,10 @@ export class WebSocketServer {
         return;
       }
 
-      console.log(`Received ${message.type} from ${deviceId}:`, message.payload);
+      const routed = await this.messageRouter.route(message, deviceId);
+      if (!routed) {
+        console.log(`Unhandled message ${message.type} from ${deviceId}:`, message.payload);
+      }
     } catch (error) {
       console.error(`Failed to parse message from ${deviceId}:`, error);
     }
@@ -91,21 +109,21 @@ export class WebSocketServer {
 
   private startHeartbeat(): void {
     this.heartbeatInterval = setInterval(() => {
-      const now = Date.now();
-      const timeout = 60000;
-
-      for (const [deviceId, connection] of this.connections.entries()) {
-        if (now - connection.lastPing > timeout) {
+      const disconnectedDevices = this.connectionManager.checkConnections(this.config.connectionTimeout!);
+      
+      for (const deviceId of disconnectedDevices) {
+        const connection = this.connectionManager.getConnection(deviceId);
+        if (connection) {
           console.log(`Connection timeout: ${deviceId}`);
-          connection.ws.close();
-          this.connections.delete(deviceId);
+          connection.ws.close(4001, 'Connection timeout');
+          this.connectionManager.removeConnection(deviceId);
         }
       }
-    }, 30000);
+    }, this.config.heartbeatInterval!);
   }
 
   public sendToDevice(deviceId: string, message: WebSocketMessage): boolean {
-    const connection = this.connections.get(deviceId);
+    const connection = this.connectionManager.getConnection(deviceId);
     if (connection && connection.ws.readyState === WebSocket.OPEN) {
       connection.ws.send(JSON.stringify(message));
       return true;
@@ -114,15 +132,29 @@ export class WebSocketServer {
   }
 
   public broadcast(message: WebSocketMessage, excludeDeviceId?: string): void {
-    for (const [deviceId, connection] of this.connections.entries()) {
-      if (deviceId !== excludeDeviceId && connection.ws.readyState === WebSocket.OPEN) {
+    for (const connection of this.connectionManager.getAllConnections()) {
+      if (connection.deviceId !== excludeDeviceId && connection.ws.readyState === WebSocket.OPEN) {
         connection.ws.send(JSON.stringify(message));
       }
     }
   }
 
-  public getConnections(): Connection[] {
-    return Array.from(this.connections.values());
+  public getConnections(): ConnectionStatus[] {
+    return this.connectionManager.getAllConnections().map(conn => ({
+      deviceId: conn.deviceId,
+      isConnected: conn.ws.readyState === WebSocket.OPEN,
+      isAuthenticated: conn.isAuthenticated,
+      connectedAt: conn.connectedAt,
+      lastPing: conn.lastPing,
+    }));
+  }
+
+  public getMessageRouter(): MessageRouter {
+    return this.messageRouter;
+  }
+
+  public getConnectionManager(): ConnectionManager {
+    return this.connectionManager;
   }
 
   private generateDeviceId(): string {
@@ -138,5 +170,7 @@ export class WebSocketServer {
       clearInterval(this.heartbeatInterval);
     }
     this.wss.close();
+    this.connectionManager.clear();
+    this.messageRouter.clearHandlers();
   }
 }
