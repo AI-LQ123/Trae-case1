@@ -2,6 +2,7 @@ import * as http from 'http';
 import WebSocket from 'ws';
 import { WebSocketServer } from './server';
 import { WebSocketMessage } from '../models/types';
+import { logger } from '../utils/logger';
 
 describe('WebSocketServer', () => {
   let httpServer: http.Server;
@@ -15,6 +16,7 @@ describe('WebSocketServer', () => {
       heartbeatInterval: 1000,
       connectionTimeout: 2000,
       maxConnections: 5,
+      maxMessageSize: 1024, // 1KB for testing
     });
 
     httpServer.listen(8080, () => {
@@ -43,6 +45,18 @@ describe('WebSocketServer', () => {
     client.on('error', (error) => {
       done.fail(error);
     });
+  });
+
+  it('should store clientIp correctly', (done) => {
+    setTimeout(() => {
+      const connections = wsServer.getConnections();
+      const connection = connections.find(c => c.deviceId === deviceId);
+      expect(connection).toBeDefined();
+      expect(connection?.clientIp).toBeDefined();
+      // Client IP should be localhost or 127.0.0.1
+      expect(connection?.clientIp).toMatch(/(localhost|127\.0\.0\.1)/);
+      done();
+    }, 100);
   });
 
   it('should send connected event on connection', (done) => {
@@ -76,6 +90,29 @@ describe('WebSocketServer', () => {
     });
 
     client.send(JSON.stringify(pingMessage));
+  });
+
+  it('should close connection for messages exceeding maxMessageSize', (done) => {
+    // Create a large message exceeding 1KB
+    const largeMessage: WebSocketMessage = {
+      type: 'event',
+      id: 'large-message',
+      timestamp: Date.now(),
+      deviceId: 'test-device',
+      payload: {
+        category: 'test',
+        data: {
+          message: 'a'.repeat(2048), // 2KB message
+        },
+      },
+    };
+
+    client.on('close', (code) => {
+      expect(code).toBe(4002); // MESSAGE_TOO_LARGE
+      done();
+    });
+
+    client.send(JSON.stringify(largeMessage));
   });
 
   it('should handle max connections', (done) => {
@@ -142,30 +179,42 @@ describe('WebSocketServer', () => {
   });
 
   it('should send messages to specific devices', (done) => {
-    const testMessage: WebSocketMessage = {
-      type: 'event',
-      id: 'test-message',
-      timestamp: Date.now(),
-      deviceId: 'server',
-      payload: {
-        category: 'test',
-        data: {
-          message: 'Hello from server',
-        },
-      },
-    };
+    // Reconnect client since it was closed in the maxMessageSize test
+    client = new WebSocket('ws://localhost:8080');
 
-    client.once('message', (data) => {
-      const message: WebSocketMessage = JSON.parse(data.toString());
-      expect(message.type).toBe('event');
-      const eventPayload = message.payload as any;
-      expect(eventPayload.category).toBe('test');
-      expect(eventPayload.data.message).toBe('Hello from server');
-      done();
+    client.on('open', () => {
+      const connections = wsServer.getConnections();
+      deviceId = connections[connections.length - 1].deviceId;
+
+      const testMessage: WebSocketMessage = {
+        type: 'event',
+        id: 'test-message',
+        timestamp: Date.now(),
+        deviceId: 'server',
+        payload: {
+          category: 'test',
+          data: {
+            message: 'Hello from server',
+          },
+        },
+      };
+
+      client.once('message', (data) => {
+        const message: WebSocketMessage = JSON.parse(data.toString());
+        expect(message.type).toBe('event');
+        const eventPayload = message.payload as any;
+        expect(eventPayload.category).toBe('test');
+        expect(eventPayload.data.message).toBe('Hello from server');
+        done();
+      });
+
+      const result = wsServer.sendToDevice(deviceId, testMessage);
+      expect(result).toBe(true);
     });
 
-    const result = wsServer.sendToDevice(deviceId, testMessage);
-    expect(result).toBe(true);
+    client.on('error', (error) => {
+      done.fail(error);
+    });
   });
 
   it('should broadcast messages to all devices', (done) => {
@@ -254,5 +303,69 @@ describe('WebSocketServer', () => {
     testClient.on('error', (error) => {
       done.fail(error);
     });
+  });
+
+  it('should handle authentication and update isAuthenticated status', (done) => {
+    // Generate pairing code first
+    const generatePairingCodeMessage: WebSocketMessage = {
+      type: 'command',
+      id: 'generate-pairing-code',
+      timestamp: Date.now(),
+      deviceId: deviceId,
+      payload: {
+        category: 'auth',
+        action: 'generate_pairing_code',
+        data: {},
+      },
+    };
+
+    client.once('message', (data) => {
+      const message: WebSocketMessage = JSON.parse(data.toString());
+      expect(message.type).toBe('event');
+      const eventPayload = message.payload as any;
+      expect(eventPayload.category).toBe('auth');
+      expect(eventPayload.data.action).toBe('generate_pairing_code');
+      expect(eventPayload.data.success).toBe(true);
+      expect(eventPayload.data.pairingCode).toBeDefined();
+
+      const pairingCode = eventPayload.data.pairingCode;
+
+      // Now use the pairing code to authenticate
+      const pairMessage: WebSocketMessage = {
+        type: 'command',
+        id: 'pair-device',
+        timestamp: Date.now(),
+        deviceId: deviceId,
+        payload: {
+          category: 'auth',
+          action: 'pair',
+          data: {
+            pairingCode,
+          },
+        },
+      };
+
+      client.once('message', (data) => {
+        const message: WebSocketMessage = JSON.parse(data.toString());
+        expect(message.type).toBe('event');
+        const eventPayload = message.payload as any;
+        expect(eventPayload.category).toBe('auth');
+        expect(eventPayload.data.action).toBe('pair');
+        expect(eventPayload.data.success).toBe(true);
+        expect(eventPayload.data.token).toBeDefined();
+
+        // Check if device is now authenticated
+        const connections = wsServer.getConnections();
+        const connection = connections.find(c => c.deviceId === deviceId);
+        expect(connection).toBeDefined();
+        expect(connection?.isAuthenticated).toBe(true);
+
+        done();
+      });
+
+      client.send(JSON.stringify(pairMessage));
+    });
+
+    client.send(JSON.stringify(generatePairingCodeMessage));
   });
 });

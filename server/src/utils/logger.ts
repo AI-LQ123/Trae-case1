@@ -28,11 +28,17 @@ export class Logger {
       return;
     }
 
-    const timestamp = new Date().toISOString();
-    const context = options.context ? `[${options.context}] ` : '';
-    const metadata = options.metadata ? ` ${JSON.stringify(options.metadata)}` : '';
+    // Create JSON log object
+    const logObject = {
+      timestamp: new Date().toISOString(),
+      level: level.toUpperCase(),
+      message,
+      context: options.context,
+      metadata: options.metadata,
+    };
 
-    const logMessage = `${timestamp} ${level.toUpperCase()} ${context}${message}${metadata}`;
+    // Convert to JSON string
+    const logMessage = JSON.stringify(logObject);
 
     switch (level) {
       case LogLevel.DEBUG:

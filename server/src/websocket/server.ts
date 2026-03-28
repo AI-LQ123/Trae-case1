@@ -15,12 +15,22 @@ export class WebSocketServer {
   private config: WebSocketServerConfig;
 
   constructor(server: HttpServer, config: WebSocketServerConfig = {}) {
+    // Read configuration from environment variables
+    const envConfig: WebSocketServerConfig = {
+      port: process.env.WS_PORT ? parseInt(process.env.WS_PORT, 10) : undefined,
+      heartbeatInterval: process.env.WS_HEARTBEAT_INTERVAL ? parseInt(process.env.WS_HEARTBEAT_INTERVAL, 10) : undefined,
+      connectionTimeout: process.env.WS_CONNECTION_TIMEOUT ? parseInt(process.env.WS_CONNECTION_TIMEOUT, 10) : undefined,
+      maxConnections: process.env.WS_MAX_CONNECTIONS ? parseInt(process.env.WS_MAX_CONNECTIONS, 10) : undefined,
+      maxMessageSize: process.env.WS_MAX_MESSAGE_SIZE ? parseInt(process.env.WS_MAX_MESSAGE_SIZE, 10) : undefined,
+    };
+
     this.config = this.validateConfig({
       port: 8080,
       heartbeatInterval: 30000,
       connectionTimeout: 60000,
       maxConnections: 100,
       maxMessageSize: 1024 * 1024, // 1MB default
+      ...envConfig,
       ...config,
     });
 
