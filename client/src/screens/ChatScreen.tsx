@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { MessageList } from '../components/chat/MessageList';
 import { MessageProps } from '../components/chat/MessageBubble';
@@ -7,14 +7,15 @@ import { useWebSocket } from '../hooks/useWebSocket';
 import { addMessage, updateMessage, setLoading, setStreamingMessageId } from '../state/slices/chatSlice';
 import { RootState } from '../state/store';
 
+// 使用更可靠的ID生成方法
 const generateId = (): string => {
-  return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+  return `msg-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 };
 
 export const ChatScreen: React.FC = () => {
   const dispatch = useDispatch();
   const { connected, reconnecting, send, connect } = useWebSocket();
-  const { messages, loading } = useSelector((state: RootState) => state.chat);
+  const { messages, loading, streamingMessageId } = useSelector((state: RootState) => state.chat);
   const [inputText, setInputText] = useState('');
   const [inputHeight, setInputHeight] = useState(40);
 
@@ -24,19 +25,27 @@ export const ChatScreen: React.FC = () => {
     const unsubscribe = useWebSocket.getClient()?.onMessage('event', (msg: any) => {
       if (msg.type === 'event' && msg.category === 'chat') {
         if (msg.payload?.content) {
-          dispatch(addMessage({
-            id: msg.id || generateId(),
-            sessionId: msg.sessionId || 'default',
-            role: 'assistant',
-            content: msg.payload.content as string,
-            timestamp: msg.timestamp || Date.now(),
-            isStreaming: msg.payload.isStreaming || false
-          }));
+          if (msg.payload.isStreaming && streamingMessageId) {
+            // 流式消息增量更新
+            dispatch(updateMessage({ id: streamingMessageId, content: msg.payload.content as string }));
+          } else {
+            // 完整消息
+            dispatch(addMessage({
+              id: msg.id || generateId(),
+              sessionId: msg.sessionId || 'default',
+              role: 'assistant',
+              content: msg.payload.content as string,
+              timestamp: msg.timestamp || Date.now(),
+              isStreaming: msg.payload.isStreaming || false
+            }));
+          }
         } else if (msg.payload?.streaming) {
           if (msg.payload.isStreaming) {
             dispatch(setStreamingMessageId(msg.id));
           } else {
             dispatch(setStreamingMessageId(null));
+            // 流式结束，清除loading状态
+            dispatch(setLoading(false));
           }
         }
       }
@@ -47,9 +56,10 @@ export const ChatScreen: React.FC = () => {
         unsubscribe();
       }
     };
-  }, [connect, dispatch]);
+  }, [connect, dispatch, streamingMessageId]);
 
-  const handleSend = () => {
+  // 使用useCallback优化handleSend
+  const handleSend = useCallback(() => {
     if (!inputText.trim() || !connected) return;
 
     const messageId = generateId();
@@ -67,23 +77,40 @@ export const ChatScreen: React.FC = () => {
     setInputText('');
     dispatch(setLoading(true));
 
-    // 通过WebSocket发送消息
-    send({
-      type: 'command',
-      category: 'chat',
-      id: messageId,
-      timestamp: timestamp,
-      payload: { message: inputText.trim() }
-    });
-  };
+    try {
+      // 通过WebSocket发送消息
+      send({
+        type: 'command',
+        category: 'chat',
+        id: messageId,
+        timestamp: timestamp,
+        payload: { message: inputText.trim() }
+      });
 
-  // 将Redux消息转换为MessageList所需的格式
-  const formattedMessages: MessageProps[] = messages.map(msg => ({
-    id: msg.id,
-    text: msg.content,
-    isUser: msg.role === 'user',
-    timestamp: new Date(msg.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-  }));
+      // 设置发送超时处理
+      setTimeout(() => {
+        const currentLoading = useSelector((state: RootState) => state.chat.loading);
+        if (currentLoading) {
+          dispatch(setLoading(false));
+          Alert.alert('发送超时', '消息发送可能失败，请检查网络连接');
+        }
+      }, 30000); // 30秒超时
+    } catch (error) {
+      console.error('发送消息失败:', error);
+      dispatch(setLoading(false));
+      Alert.alert('发送失败', '消息发送失败，请重试');
+    }
+  }, [inputText, connected, send, dispatch]);
+
+  // 使用useMemo优化formattedMessages
+  const formattedMessages: MessageProps[] = useMemo(() => {
+    return messages.map(msg => ({
+      id: msg.id,
+      text: msg.content,
+      isUser: msg.role === 'user',
+      timestamp: new Date(msg.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+    }));
+  }, [messages]);
 
   return (
     <KeyboardAvoidingView

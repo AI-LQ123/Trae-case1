@@ -80,7 +80,7 @@ describe('chatSlice', () => {
     expect(actual.messages[0]).toEqual(message);
   });
 
-  it('should handle updateMessage', () => {
+  it('should handle updateMessage with existing message', () => {
     const initialMessages: ChatMessage[] = [
       {
         id: '1',
@@ -93,6 +93,21 @@ describe('chatSlice', () => {
     const stateWithMessages = { ...initialState, messages: initialMessages };
     const actual = chatReducer(stateWithMessages, updateMessage({ id: '1', content: ' World' }));
     expect(actual.messages[0].content).toEqual('Hello World');
+  });
+
+  it('should handle updateMessage with non-existing message (boundary condition)', () => {
+    const initialMessages: ChatMessage[] = [
+      {
+        id: '1',
+        sessionId: '1',
+        role: 'assistant',
+        content: 'Hello',
+        timestamp: Date.now(),
+      },
+    ];
+    const stateWithMessages = { ...initialState, messages: initialMessages };
+    const actual = chatReducer(stateWithMessages, updateMessage({ id: '999', content: ' World' }));
+    expect(actual.messages).toEqual(initialMessages); // 应该保持不变
   });
 
   it('should handle setLoading', () => {
@@ -109,5 +124,73 @@ describe('chatSlice', () => {
   it('should handle setHasMore', () => {
     const actual = chatReducer(initialState, setHasMore(false));
     expect(actual.hasMore).toEqual(false);
+  });
+
+  // 测试消息列表长度边界情况
+  it('should handle addMessage when message list is large', () => {
+    // 创建一个包含100条消息的初始状态
+    const largeMessages: ChatMessage[] = [];
+    for (let i = 0; i < 100; i++) {
+      largeMessages.push({
+        id: `msg-${i}`,
+        sessionId: '1',
+        role: 'user',
+        content: `Message ${i}`,
+        timestamp: Date.now(),
+      });
+    }
+    const stateWithLargeMessages = { ...initialState, messages: largeMessages };
+    
+    // 添加一条新消息
+    const newMessage: ChatMessage = {
+      id: 'new-msg',
+      sessionId: '1',
+      role: 'user',
+      content: 'New message',
+      timestamp: Date.now(),
+    };
+    
+    const actual = chatReducer(stateWithLargeMessages, addMessage(newMessage));
+    expect(actual.messages).toHaveLength(101);
+    expect(actual.messages[100]).toEqual(newMessage);
+  });
+
+  // 测试多个操作的组合
+  it('should handle multiple operations in sequence', () => {
+    let state = initialState;
+    
+    // 添加会话
+    const session: ChatSession = {
+      id: '1',
+      title: 'Test Session',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    state = chatReducer(state, addSession(session));
+    
+    // 设置当前会话
+    state = chatReducer(state, setCurrentSession('1'));
+    
+    // 添加消息
+    const message: ChatMessage = {
+      id: '1',
+      sessionId: '1',
+      role: 'user',
+      content: 'Hello',
+      timestamp: Date.now(),
+    };
+    state = chatReducer(state, addMessage(message));
+    
+    // 更新消息
+    state = chatReducer(state, updateMessage({ id: '1', content: ' World' }));
+    
+    // 设置加载状态
+    state = chatReducer(state, setLoading(true));
+    
+    expect(state.sessions).toHaveLength(1);
+    expect(state.currentSessionId).toEqual('1');
+    expect(state.messages).toHaveLength(1);
+    expect(state.messages[0].content).toEqual('Hello World');
+    expect(state.loading).toEqual(true);
   });
 });
