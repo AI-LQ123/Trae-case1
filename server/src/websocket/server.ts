@@ -57,7 +57,7 @@ export class WebSocketServer {
   }
 
   private registerChatHandler(): void {
-    const chatHandler = new ChatMessageHandler(this.connectionManager.getConnectionsMap());
+    const chatHandler = new ChatMessageHandler(this.connectionManager);
     this.messageRouter.registerHandler('chat:send', '', chatHandler);
     this.messageRouter.registerHandler('chat:history', '', chatHandler);
     this.messageRouter.registerHandler('chat:clear', '', chatHandler);
@@ -174,6 +174,21 @@ export class WebSocketServer {
           },
         });
         return;
+      }
+
+      // 检查设备是否已认证（除了ping消息和认证相关消息外）
+      const isAuthCommand = message.type === 'command' && message.payload && 'action' in message.payload && 
+        (message.payload.action === 'generate_pairing_code' || message.payload.action === 'pair' || message.payload.action === 'authenticate');
+      
+      if (message.type !== 'ping' && !isAuthCommand) {
+        if (!connection.isAuthenticated) {
+          logger.warn(`Unauthenticated device ${deviceId} trying to send message: ${message.type}`, {
+            context: 'WebSocketServer',
+            metadata: { deviceId, messageType: message.type },
+          });
+          this.sendErrorToDevice(deviceId, 'UNAUTHENTICATED', 'Device not authenticated');
+          return;
+        }
       }
 
       const routed = await this.messageRouter.route(message, deviceId);

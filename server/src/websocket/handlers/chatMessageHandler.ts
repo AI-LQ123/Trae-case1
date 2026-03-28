@@ -1,17 +1,18 @@
 import { WebSocket } from 'ws';
-import { WebSocketMessage, Connection } from '../../models/types';
+import { WebSocketMessage } from '../../models/types';
 import { ChatHandler } from './chatHandler';
 import { MessageHandler } from '../messageRouter';
+import { ConnectionManager } from '../connectionManager';
 
 export class ChatMessageHandler implements MessageHandler {
-  private connections: Map<string, Connection>;
+  private connectionManager: ConnectionManager;
 
-  constructor(connections: Map<string, Connection>) {
-    this.connections = connections;
+  constructor(connectionManager: ConnectionManager) {
+    this.connectionManager = connectionManager;
   }
 
   async handle(message: WebSocketMessage, deviceId: string): Promise<void> {
-    const connection = this.connections.get(deviceId);
+    const connection = this.connectionManager.getConnection(deviceId);
     if (connection) {
       const chatHandler = new ChatHandler(connection.ws, deviceId);
       chatHandler.handleChatMessage(message);
