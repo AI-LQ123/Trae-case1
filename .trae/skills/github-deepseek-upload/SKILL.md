@@ -190,6 +190,22 @@ The conversation history recording should be integrated into the main document u
 - **Send button not working**: Click the `div` element specifically, not other elements
 - **Authentication issues**: Use GitHub CLI for interactive login if needed
 - **Conversation history not updating**: Ensure proper git add, commit, and push sequence
+- **SSH Host Key Verification**: 
+  - **Symptom**: `The authenticity of host 'github.com' can't be established`
+  - **Solution**: Switch to HTTPS remote URL
+    ```bash
+    git remote set-url origin https://github.com/<username>/<repository>.git
+    ```
+- **PowerShell Command Not Found**:
+  - **Symptom**: `grep : The term 'grep' is not recognized`
+  - **Solution**: Use PowerShell-native alternatives
+    ```powershell
+    # Use Select-String instead of grep
+    git ls-files | Select-String -Pattern "pattern"
+    
+    # Use semicolon or separate lines instead of &&
+    git add .; git commit -m "message"; git push
+    ```
 
 ## Best Practices
 
@@ -231,6 +247,29 @@ The conversation history recording should be integrated into the main document u
 4. **DeepSeek Access**: Ensuring DeepSeek can access GitHub document links
    - **Solution**: Verified URLs in browser before sending to DeepSeek
 
+5. **GitHub SSH Host Verification**: When using SSH remote URL, git push prompts for host authenticity verification
+   - **Problem**: `The authenticity of host 'github.com' can't be established`
+   - **Solution**: Switch to HTTPS remote URL to avoid SSH key verification
+   ```bash
+   # Check current remote URL
+   git remote -v
+   
+   # Switch from SSH to HTTPS
+   git remote set-url origin https://github.com/<username>/<repository>.git
+   
+   # Now push works without SSH verification
+   git push origin master
+   ```
+
+6. **PowerShell grep Command Not Found**: PowerShell does not have `grep` command
+   - **Problem**: `grep : Cannot find path... because it does not exist`
+   - **Solution**: Use PowerShell's `Select-String` cmdlet instead
+   ```powershell
+   # Instead of: git ls-files | grep "pattern"
+   # Use: 
+   git ls-files | Select-String -Pattern "pattern"
+   ```
+
 ### Verified Successful Solutions
 
 1. **PowerShell Compatibility**: Using separate git commands instead of `&&` syntax
@@ -240,6 +279,16 @@ The conversation history recording should be integrated into the main document u
 5. **Version Control**: Following a consistent git workflow (add → commit → push)
 6. **DeepSeek Communication**: Using the correct send button element in DeepSeek's interface
 7. **Branch Management**: Synchronizing changes across both master and main branches
+8. **SSH to HTTPS Migration**: Successfully switched remote URL from SSH to HTTPS to avoid authentication prompts
+   ```bash
+   git remote set-url origin https://github.com/<username>/<repository>.git
+   git push origin master
+   git push origin master:main
+   ```
+9. **PowerShell Text Filtering**: Using `Select-String` as PowerShell alternative to `grep`
+   ```powershell
+   git ls-files | Select-String -Pattern "websocket|\.test\.ts"
+   ```
 
 ### Key Lessons Learned
 
@@ -249,6 +298,14 @@ The conversation history recording should be integrated into the main document u
 - **Documentation**: Regularly update conversation history for traceability
 - **Consistency**: Maintain consistent branch management practices
 - **Clarity**: Use descriptive commit messages for better project tracking
+- **Remote URL Selection**: 
+  - SSH URLs require host key verification and SSH key setup
+  - HTTPS URLs are simpler for automated workflows but may require credential input
+  - Choose based on your environment and security requirements
+- **PowerShell Command Equivalents**:
+  - `grep` → `Select-String`
+  - `&&` → Execute commands separately or use `;` separator
+  - Always verify command availability in PowerShell before use
 
 ## Expected Outcome
 
