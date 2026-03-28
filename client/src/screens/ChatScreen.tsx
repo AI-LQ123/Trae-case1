@@ -1,27 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
+import { useDispatch, useSelector } from 'react-redux';
 import { MessageList } from '../components/chat/MessageList';
 import { MessageProps } from '../components/chat/MessageBubble';
 import { useWebSocket } from '../hooks/useWebSocket';
+import { addMessage, updateMessage, setLoading, setStreamingMessageId } from '../state/slices/chatSlice';
+import { RootState } from '../state/store';
 
 const generateId = (): string => {
   return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 };
 
-const getCurrentTime = (): string => {
-  return new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-};
-
 export const ChatScreen: React.FC = () => {
+  const dispatch = useDispatch();
   const { connected, reconnecting, send, connect } = useWebSocket();
-  const [messages, setMessages] = useState<MessageProps[]>([
-    {
-      id: generateId(),
-      text: '你好！我是你的 AI 助手，有什么可以帮助你的吗？',
-      isUser: false,
-      timestamp: getCurrentTime(),
-    },
-  ]);
+  const { messages, loading } = useSelector((state: RootState) => state.chat);
   const [inputText, setInputText] = useState('');
   const [inputHeight, setInputHeight] = useState(40);
 
@@ -29,14 +22,23 @@ export const ChatScreen: React.FC = () => {
     connect();
 
     const unsubscribe = useWebSocket.getClient()?.onMessage('event', (msg: any) => {
-      if (msg.type === 'event' && msg.category === 'chat' && msg.payload?.content) {
-        const aiResponse: MessageProps = {
-          id: generateId(),
-          text: msg.payload.content as string,
-          isUser: false,
-          timestamp: getCurrentTime(),
-        };
-        setMessages(prevMessages => [...prevMessages, aiResponse]);
+      if (msg.type === 'event' && msg.category === 'chat') {
+        if (msg.payload?.content) {
+          dispatch(addMessage({
+            id: msg.id || generateId(),
+            sessionId: msg.sessionId || 'default',
+            role: 'assistant',
+            content: msg.payload.content as string,
+            timestamp: msg.timestamp || Date.now(),
+            isStreaming: msg.payload.isStreaming || false
+          }));
+        } else if (msg.payload?.streaming) {
+          if (msg.payload.isStreaming) {
+            dispatch(setStreamingMessageId(msg.id));
+          } else {
+            dispatch(setStreamingMessageId(null));
+          }
+        }
       }
     });
 
@@ -45,29 +47,43 @@ export const ChatScreen: React.FC = () => {
         unsubscribe();
       }
     };
-  }, [connect]);
+  }, [connect, dispatch]);
 
   const handleSend = () => {
     if (!inputText.trim() || !connected) return;
 
-    const userMessage: MessageProps = {
-      id: generateId(),
-      text: inputText.trim(),
-      isUser: true,
-      timestamp: getCurrentTime(),
-    };
-    setMessages([...messages, userMessage]);
+    const messageId = generateId();
+    const timestamp = Date.now();
+
+    // 添加用户消息到Redux状态
+    dispatch(addMessage({
+      id: messageId,
+      sessionId: 'default',
+      role: 'user',
+      content: inputText.trim(),
+      timestamp: timestamp
+    }));
+
     setInputText('');
+    dispatch(setLoading(true));
 
     // 通过WebSocket发送消息
     send({
       type: 'command',
       category: 'chat',
-      id: generateId(),
-      timestamp: Date.now(),
+      id: messageId,
+      timestamp: timestamp,
       payload: { message: inputText.trim() }
     });
   };
+
+  // 将Redux消息转换为MessageList所需的格式
+  const formattedMessages: MessageProps[] = messages.map(msg => ({
+    id: msg.id,
+    text: msg.content,
+    isUser: msg.role === 'user',
+    timestamp: new Date(msg.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+  }));
 
   return (
     <KeyboardAvoidingView
@@ -83,7 +99,7 @@ export const ChatScreen: React.FC = () => {
           </Text>
         </View>
       </View>
-      <MessageList messages={messages} />
+      <MessageList messages={formattedMessages} />
       <View style={styles.inputContainer}>
         <TextInput
           style={[styles.input, { height: Math.max(40, inputHeight) }]}
@@ -96,12 +112,12 @@ export const ChatScreen: React.FC = () => {
           }}
         />
         <TouchableOpacity
-          style={[styles.sendButton, !connected && styles.disabledButton]}
+          style={[styles.sendButton, (!connected || loading) && styles.disabledButton]}
           onPress={handleSend}
-          disabled={!connected}
+          disabled={!connected || loading}
         >
           <Text style={styles.sendButtonText}>
-            {connected ? '发送' : '连接中...'}
+            {loading ? '发送中...' : connected ? '发送' : '连接中...'}
           </Text>
         </TouchableOpacity>
       </View>
