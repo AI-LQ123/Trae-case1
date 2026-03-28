@@ -36,6 +36,8 @@ export class WebSocketClient {
   private deviceId: string;
   private reconnectionManager: ReconnectionManager;
   private messageHandlers: Map<string, (msg: WebSocketMessage) => void> = new Map();
+  private messageQueue: Array<Omit<WebSocketMessage, 'deviceId'>> = [];
+  private maxQueueSize: number = 100;
 
   constructor(options: WebSocketOptions) {
     this.url = options.url;
@@ -75,6 +77,8 @@ export class WebSocketClient {
         store.dispatch(setReconnecting(false));
         this.reconnectionManager.reset();
         this.startPing();
+        // 连接成功后，发送队列中的消息
+        this.flushMessageQueue();
       };
 
       this.ws.onmessage = (event) => {
@@ -136,9 +140,35 @@ export class WebSocketClient {
       };
       this.ws.send(JSON.stringify(fullMessage));
     } else {
-      console.warn('WebSocket is not connected');
-      store.dispatch(setError('连接未建立，无法发送消息'));
+      console.warn('WebSocket is not connected, queuing message');
+      this.enqueueMessage(message);
+      store.dispatch(setError('连接未建立，消息已加入队列'));
     }
+  }
+
+  private enqueueMessage(message: Omit<WebSocketMessage, 'deviceId'>): void {
+    if (this.messageQueue.length >= this.maxQueueSize) {
+      // 队列已满，移除最旧的消息
+      this.messageQueue.shift();
+    }
+    this.messageQueue.push(message);
+  }
+
+  private flushMessageQueue(): void {
+    while (this.messageQueue.length > 0) {
+      const message = this.messageQueue.shift();
+      if (message) {
+        this.send(message);
+      }
+    }
+  }
+
+  public getQueueSize(): number {
+    return this.messageQueue.length;
+  }
+
+  public clearQueue(): void {
+    this.messageQueue = [];
   }
 
   public ping(): void {
