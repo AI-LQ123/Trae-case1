@@ -4,13 +4,14 @@ import { Connection } from '../models/types';
 export class ConnectionManager {
   private connections: Map<string, Connection> = new Map();
 
-  addConnection(deviceId: string, ws: WebSocket): Connection {
+  addConnection(deviceId: string, ws: WebSocket, clientIp?: string): Connection {
     const connection: Connection = {
       deviceId,
       ws,
       connectedAt: Date.now(),
       lastPing: Date.now(),
       isAuthenticated: false,
+      clientIp,
     };
 
     this.connections.set(deviceId, connection);

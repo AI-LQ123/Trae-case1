@@ -48,4 +48,5 @@ export interface Connection {
   connectedAt: number;
   lastPing: number;
   isAuthenticated: boolean;
+  clientIp?: string;
 }

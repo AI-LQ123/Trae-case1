@@ -6,6 +6,7 @@ export interface WebSocketServerConfig {
   heartbeatInterval?: number;
   connectionTimeout?: number;
   maxConnections?: number;
+  maxMessageSize?: number; // 最大消息大小（字节），默认1MB
 }
 
 // 消息处理结果接口

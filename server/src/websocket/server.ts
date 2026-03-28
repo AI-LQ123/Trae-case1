@@ -13,13 +13,14 @@ export class WebSocketServer {
   private config: WebSocketServerConfig;
 
   constructor(server: HttpServer, config: WebSocketServerConfig = {}) {
-    this.config = {
+    this.config = this.validateConfig({
       port: 8080,
       heartbeatInterval: 30000,
       connectionTimeout: 60000,
       maxConnections: 100,
+      maxMessageSize: 1024 * 1024, // 1MB default
       ...config,
-    };
+    });
 
     this.wss = new WebSocket.Server({ server });
     this.connectionManager = new ConnectionManager();
@@ -27,6 +28,22 @@ export class WebSocketServer {
 
     this.setupWebSocketServer();
     this.startHeartbeat();
+  }
+
+  private validateConfig(config: WebSocketServerConfig): WebSocketServerConfig {
+    if (config.maxConnections !== undefined && config.maxConnections <= 0) {
+      throw new Error('maxConnections must be greater than 0');
+    }
+    if (config.heartbeatInterval !== undefined && config.heartbeatInterval < 1000) {
+      throw new Error('heartbeatInterval must be at least 1000ms');
+    }
+    if (config.connectionTimeout !== undefined && config.connectionTimeout < 5000) {
+      throw new Error('connectionTimeout must be at least 5000ms');
+    }
+    if (config.maxMessageSize !== undefined && config.maxMessageSize <= 0) {
+      throw new Error('maxMessageSize must be greater than 0');
+    }
+    return config as WebSocketServerConfig;
   }
 
   private setupWebSocketServer(): void {
@@ -41,7 +58,7 @@ export class WebSocketServer {
       }
 
       const deviceId = this.generateDeviceId();
-      const connection = this.connectionManager.addConnection(deviceId, ws);
+      const connection = this.connectionManager.addConnection(deviceId, ws, clientIp);
 
       ws.on('message', (data: WebSocket.RawData) => {
         this.handleMessage(deviceId, data);
@@ -54,6 +71,7 @@ export class WebSocketServer {
 
       ws.on('error', (error: Error) => {
         console.error(`WebSocket error for ${deviceId}:`, error);
+        this.sendErrorToDevice(deviceId, 'WEBSOCKET_ERROR', 'WebSocket connection error');
         this.connectionManager.removeConnection(deviceId);
       });
 
@@ -75,6 +93,13 @@ export class WebSocketServer {
 
   private async handleMessage(deviceId: string, data: WebSocket.RawData): Promise<void> {
     try {
+      // Check message size
+      const messageSize = Buffer.byteLength(data as Buffer);
+      if (messageSize > this.config.maxMessageSize!) {
+        this.sendErrorToDevice(deviceId, 'MESSAGE_TOO_LARGE', `Message size exceeds limit of ${this.config.maxMessageSize} bytes`);
+        return;
+      }
+
       const message: WebSocketMessage = JSON.parse(data.toString());
       const connection = this.connectionManager.getConnection(deviceId);
 
@@ -101,10 +126,28 @@ export class WebSocketServer {
       const routed = await this.messageRouter.route(message, deviceId);
       if (!routed) {
         console.log(`Unhandled message ${message.type} from ${deviceId}:`, message.payload);
+        this.sendErrorToDevice(deviceId, 'UNHANDLED_MESSAGE', `Message type '${message.type}' is not handled`);
       }
     } catch (error) {
       console.error(`Failed to parse message from ${deviceId}:`, error);
+      this.sendErrorToDevice(deviceId, 'INVALID_MESSAGE', 'Failed to parse message');
     }
+  }
+
+  private sendErrorToDevice(deviceId: string, code: string, message: string): boolean {
+    return this.sendToDevice(deviceId, {
+      type: 'event',
+      id: this.generateMessageId(),
+      timestamp: Date.now(),
+      deviceId: 'server',
+      payload: {
+        category: 'error',
+        data: {
+          code,
+          message,
+        },
+      },
+    });
   }
 
   private startHeartbeat(): void {
@@ -146,6 +189,7 @@ export class WebSocketServer {
       isAuthenticated: conn.isAuthenticated,
       connectedAt: conn.connectedAt,
       lastPing: conn.lastPing,
+      clientIp: conn.clientIp,
     }));
   }
 
@@ -166,11 +210,24 @@ export class WebSocketServer {
   }
 
   public close(): void {
+    // Stop heartbeat
     if (this.heartbeatInterval) {
       clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
     }
-    this.wss.close();
+
+    // Close all connections gracefully
+    for (const connection of this.connectionManager.getAllConnections()) {
+      if (connection.ws.readyState === WebSocket.OPEN) {
+        connection.ws.close(1000, 'Server shutting down');
+      }
+    }
     this.connectionManager.clear();
+
+    // Clear message handlers
     this.messageRouter.clearHandlers();
+
+    // Close WebSocket server
+    this.wss.close();
   }
 }
