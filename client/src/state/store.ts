@@ -5,6 +5,7 @@ import terminalReducer from './slices/terminalSlice';
 import taskReducer from './slices/taskSlice';
 import projectReducer from './slices/projectSlice';
 import settingsReducer from './slices/settingsSlice';
+import notificationReducer from './slices/notificationSlice';
 
 export const store = configureStore({
   reducer: {
@@ -14,6 +15,7 @@ export const store = configureStore({
     tasks: taskReducer,
     project: projectReducer,
     settings: settingsReducer,
+    notification: notificationReducer,
   },
   middleware: getDefaultMiddleware =>
     getDefaultMiddleware({
