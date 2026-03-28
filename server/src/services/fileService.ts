@@ -77,6 +77,12 @@ class FileService {
     try {
       this.checkPath(filePath);
 
+      // 检查文件大小
+      const sizeInBytes = Buffer.byteLength(content, 'utf-8');
+      if (sizeInBytes > this.maxFileSize) {
+        throw new Error(`File size exceeds maximum limit of ${this.maxFileSize / 1024 / 1024}MB`);
+      }
+
       // 确保目录存在
       const dir = path.dirname(filePath);
       this.checkPath(dir); // 检查父目录路径
@@ -85,7 +91,7 @@ class FileService {
       await fs.promises.writeFile(filePath, content, 'utf-8');
       
       // 记录操作日志
-      logger.info(`File written: ${filePath}, size: ${content.length} bytes`);
+      logger.info(`File written: ${filePath}, size: ${sizeInBytes} bytes`);
     } catch (error) {
       logger.error(`Failed to write file ${filePath}: ${(error as Error).message}`);
       throw new Error(`Failed to write file: ${(error as Error).message}`);
