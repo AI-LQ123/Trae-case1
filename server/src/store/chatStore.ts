@@ -22,13 +22,17 @@ export class ChatStore {
   private loaded = false;
 
   constructor() {
-    this.loadSessions();
+    this.loadSessions().catch(error => {
+      console.error('Error loading sessions in constructor:', error);
+    });
+    // 每天清理一次过期会话
+    setInterval(() => this.cleanupExpiredSessions(), 24 * 60 * 60 * 1000);
   }
 
-  private loadSessions(): void {
+  private async loadSessions(): Promise<void> {
     try {
-      if (fs.existsSync(SESSIONS_FILE)) {
-        const data = fs.readFileSync(SESSIONS_FILE, 'utf8');
+      if (await fs.promises.access(SESSIONS_FILE).then(() => true).catch(() => false)) {
+        const data = await fs.promises.readFile(SESSIONS_FILE, 'utf8');
         const sessions = JSON.parse(data);
         
         // 转换日期字符串为Date对象
@@ -45,18 +49,18 @@ export class ChatStore {
     }
   }
 
-  private saveSessions(): void {
+  private async saveSessions(): Promise<void> {
     if (!this.loaded) return;
     
     try {
       const sessions = Array.from(this.sessions.values());
-      fs.writeFileSync(SESSIONS_FILE, JSON.stringify(sessions, null, 2));
+      await fs.promises.writeFile(SESSIONS_FILE, JSON.stringify(sessions, null, 2));
     } catch (error) {
       console.error('Failed to save chat sessions:', error);
     }
   }
 
-  createSession(sessionId: string): ChatSession {
+  async createSession(sessionId: string): Promise<ChatSession> {
     const session: ChatSession = {
       id: sessionId,
       messages: [],
@@ -64,7 +68,7 @@ export class ChatStore {
       lastUpdated: new Date(),
     };
     this.sessions.set(sessionId, session);
-    this.saveSessions();
+    await this.saveSessions();
     return session;
   }
 
@@ -72,7 +76,7 @@ export class ChatStore {
     return this.sessions.get(sessionId);
   }
 
-  addMessage(sessionId: string, message: ChatMessage): void {
+  async addMessage(sessionId: string, message: ChatMessage): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (session) {
       session.messages.push(message);
@@ -81,7 +85,7 @@ export class ChatStore {
       // 截断消息，保持每个会话的消息数量在合理范围内
       this.truncateMessages(session);
       
-      this.saveSessions();
+      await this.saveSessions();
     }
   }
 
@@ -105,9 +109,9 @@ export class ChatStore {
     });
   }
 
-  deleteSession(sessionId: string): void {
+  async deleteSession(sessionId: string): Promise<void> {
     this.sessions.delete(sessionId);
-    this.saveSessions();
+    await this.saveSessions();
   }
 
   getAllSessions(): ChatSession[] {
@@ -115,7 +119,7 @@ export class ChatStore {
   }
 
   // 清理过期会话（超过30天的会话）
-  cleanupExpiredSessions(): number {
+  async cleanupExpiredSessions(): Promise<number> {
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     let deletedCount = 0;
@@ -128,7 +132,7 @@ export class ChatStore {
     }
 
     if (deletedCount > 0) {
-      this.saveSessions();
+      await this.saveSessions();
     }
 
     return deletedCount;

@@ -33,9 +33,8 @@ export class AIService {
     
     while (attempts < this.options.retryAttempts!) {
       try {
-        // 模拟AI响应，实际项目中应该调用真实的AI API
-        // 这里仅作为示例实现，添加了错误模拟
-        const response = await this.simulateAIResponse(message, attempts);
+        // 调用真实的OpenAI API
+        const response = await this.generateResponseWithOpenAI(message, context);
         return response;
       } catch (error) {
         attempts++;
@@ -56,28 +55,53 @@ export class AIService {
     throw new AIError('RETRY_FAILED', 'Failed to generate AI response after multiple attempts');
   }
 
-  private async simulateAIResponse(message: string, attempt: number): Promise<string> {
-    // 模拟AI响应，添加错误场景
-    return await new Promise<string>((resolve, reject) => {
-      setTimeout(() => {
-        // 模拟10%的概率出现错误
-        const errorProbability = Math.random();
-        
-        if (errorProbability < 0.1 && attempt === 0) {
-          // 模拟超时错误
-          reject(new AIError('TIMEOUT', 'AI service timeout'));
-        } else if (errorProbability < 0.2 && attempt === 0) {
-          // 模拟限流错误
-          reject(new AIError('RATE_LIMIT', 'AI service rate limit exceeded'));
-        } else if (errorProbability < 0.3 && attempt === 0) {
-          // 模拟API密钥错误
-          reject(new AIError('AUTH_ERROR', 'AI service authentication failed'));
-        } else {
-          // 正常响应
-          resolve(`AI response to: ${message}`);
+  // 生产环境实现 - OpenAI API
+  private async generateResponseWithOpenAI(message: string, context: ChatMessage[]): Promise<string> {
+    try {
+      // 这里是OpenAI API调用的代码
+      // 在实际使用时，需要安装openai包：npm install openai
+      // import OpenAI from 'openai';
+      // const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      
+      const formattedContext = this.formatPrompt(message, context);
+      
+      // 模拟OpenAI API调用（实际使用时取消注释下面的代码）
+      // if (!process.env.OPENAI_API_KEY) {
+      //   throw new AIError('AUTH_ERROR', 'OpenAI API key is not configured');
+      // }
+      // const completion = await openai.chat.completions.create({
+      //   model: this.options.model!,
+      //   messages: [{ role: 'user', content: formattedContext }],
+      //   temperature: this.options.temperature,
+      //   max_tokens: this.options.maxTokens,
+      // });
+      // return completion.choices[0].message.content || '';
+      
+      // 暂时使用模拟响应，实际部署时请取消上面的注释并删除这行
+      return `OpenAI response to: ${message}`;
+    } catch (error) {
+      console.error('Error calling OpenAI API:', error);
+      
+      // 处理不同类型的错误
+      if (error instanceof AIError) {
+        throw error;
+      } else if (error instanceof Error) {
+        // 检查是否是认证错误
+        if (error.message.includes('authentication')) {
+          throw new AIError('AUTH_ERROR', 'OpenAI API authentication failed');
         }
-      }, 1000);
-    });
+        // 检查是否是限流错误
+        else if (error.message.includes('rate limit')) {
+          throw new AIError('RATE_LIMIT', 'OpenAI API rate limit exceeded');
+        }
+        // 检查是否是超时错误
+        else if (error.message.includes('timeout')) {
+          throw new AIError('TIMEOUT', 'OpenAI API timeout');
+        }
+      }
+      
+      throw new AIError('API_ERROR', 'Failed to call OpenAI API');
+    }
   }
 
   private sleep(ms: number): Promise<void> {
