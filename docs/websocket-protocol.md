@@ -175,7 +175,26 @@ wss://{server_host}:{server_port}/ws?token={jwt_token}  // 加密连接
     "action": "request",
     "data": {
       "lastSyncTime": 1698123450000,
-      "syncTypes": ["chat", "tasks", "notifications"]
+      "syncTypes": ["chat", "tasks", "notifications", "terminals"]
+    }
+  }
+}
+```
+
+#### 4.1.8 安全确认命令
+
+```json
+{
+  "type": "command",
+  "id": "cmd-008",
+  "timestamp": 1698123456796,
+  "deviceId": "mobile-001",
+  "payload": {
+    "category": "security",
+    "action": "confirm_operation",
+    "data": {
+      "operationId": "op-001",
+      "approved": true
     }
   }
 }
@@ -302,6 +321,7 @@ wss://{server_host}:{server_port}/ws?token={jwt_token}  // 加密连接
       },
       "tasks": [...],
       "notifications": [...],
+      "terminals": [...],
       "serverTime": 1698123456801
     }
   }

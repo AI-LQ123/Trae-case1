@@ -96,6 +96,7 @@ interface ChatMessage {
   role: 'user' | 'assistant'; // 角色
   content: string;      // 消息内容
   createdAt: number;    // 创建时间
+  parentId?: string;    // 父消息ID，用于引用/回复
   metadata?: {
     isStreaming?: boolean; // 是否正在流式输出
     finishReason?: string;  // 结束原因
@@ -212,6 +213,7 @@ interface Task {
   command: string;      // 执行命令
   status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'; // 状态
   progress: number;     // 进度（0-100）
+  priority?: 'low' | 'medium' | 'high'; // 任务优先级
   createdAt: number;    // 创建时间
   startedAt?: number;   // 开始时间
   completedAt?: number; // 完成时间
@@ -386,7 +388,7 @@ interface PongMessage {
 // 同步请求
 interface SyncRequest {
   lastSyncTime: number; // 上次同步时间
-  syncTypes: ('chat' | 'tasks' | 'settings' | 'notifications')[]; // 同步类型
+  syncTypes: ('chat' | 'tasks' | 'settings' | 'notifications' | 'terminals')[]; // 同步类型
 }
 
 // 同步响应
@@ -398,6 +400,7 @@ interface SyncResponse {
   tasks: Task[];
   settings: UserSettings;
   notifications: Notification[];
+  terminals: TerminalSession[];
   serverTime: number;   // 服务器当前时间
 }
 ```

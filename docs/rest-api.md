@@ -178,8 +178,8 @@ Authorization: Bearer {jwt_token}
 - **方法**：`GET`
 - **查询参数**：
   - `path`（必填）：文件路径
-  - `offset`（可选）：起始位置（用于分块加载）
-  - `length`（可选）：长度（用于分块加载）
+  - `offset`（可选）：起始字节位置（用于分块加载）
+  - `length`（可选）：字节长度（用于分块加载）
 - **响应**：
   ```json
   {
@@ -235,7 +235,11 @@ Authorization: Bearer {jwt_token}
           "sessionId": "session-001",
           "role": "user",
           "content": "帮我生成一个React组件",
-          "createdAt": 1698123456789
+          "createdAt": 1698123456789,
+          "parentId": "msg-000",
+          "metadata": {
+            "isStreaming": false
+          }
         }
       ],
       "pagination": {
@@ -255,6 +259,7 @@ Authorization: Bearer {jwt_token}
 - **方法**：`GET`
 - **查询参数**：
   - `status`（可选）：任务状态过滤
+  - `priority`（可选）：任务优先级过滤
   - `page`（可选）：页码，默认为 1
   - `pageSize`（可选）：每页大小，默认为 20
 - **响应**：
@@ -555,4 +560,9 @@ API 版本通过 URL 路径进行控制，例如：
 /api/v1/pair/request
 ```
 
-当 API 发生破坏性变更时，将增加版本号。
+### 版本管理策略
+- **主要版本递增**：当 API 发生破坏性变更时（如字段删除、参数类型变更、响应结构变化）
+- **次要版本**：当 API 新增功能但保持向后兼容时
+- **补丁版本**：当 API 修复错误但不改变接口时
+
+版本号格式：`v{major}.{minor}.{patch}`，例如 `v1.2.0`
