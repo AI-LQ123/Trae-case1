@@ -22,7 +22,7 @@ class FileWatcher {
   private callbacks: ((event: FileChangeEvent) => void)[] = [];
   private isWatching: boolean = false;
   private eventCache: Map<string, NodeJS.Timeout> = new Map();
-  private eventTimestamps: Map<string, number> = new Map();
+  private processedFiles: Set<string> = new Set();
 
   constructor(options: FileWatcherOptions) {
     this.rootPath = path.resolve(options.rootPath);
@@ -112,20 +112,6 @@ class FileWatcher {
    * 处理文件事件
    */
   private handleFileEvent(eventType: string, filePath: string): void {
-    // 生成事件唯一标识
-    const eventId = `${eventType}:${filePath}`;
-    const now = Date.now();
-    
-    // 检查是否在短时间内已经处理过相同的事件
-    const lastTimestamp = this.eventTimestamps.get(eventId);
-    if (lastTimestamp && now - lastTimestamp < 1000) {
-      // 忽略1秒内的重复事件
-      return;
-    }
-    
-    // 更新事件时间戳
-    this.eventTimestamps.set(eventId, now);
-
     try {
       const stats = fs.statSync(filePath);
       
@@ -189,7 +175,7 @@ class FileWatcher {
         clearTimeout(timeout);
       }
       this.eventCache.clear();
-      this.eventTimestamps.clear();
+      this.processedFiles.clear();
 
       // 关闭所有监听器
       for (const [dirPath, watcher] of this.watchers) {
@@ -222,6 +208,30 @@ class FileWatcher {
    * 触发事件
    */
   private emitEvent(type: FileChangeEvent['type'], filePath: string, stats?: fs.Stats): void {
+    // 生成事件唯一键
+    const eventKey = `${type}:${filePath}`;
+    
+    // 检查是否已经处理过这个事件
+    if (this.processedFiles.has(eventKey)) {
+      return;
+    }
+    
+    // 对于change事件，检查是否刚刚触发了add事件
+    if (type === 'change') {
+      const addEventKey = `add:${filePath}`;
+      if (this.processedFiles.has(addEventKey)) {
+        return;
+      }
+    }
+    
+    // 标记为已处理
+    this.processedFiles.add(eventKey);
+    
+    // 1秒后移除标记，允许相同事件再次触发
+    setTimeout(() => {
+      this.processedFiles.delete(eventKey);
+    }, 1000);
+    
     const event: FileChangeEvent = {
       type,
       path: filePath
