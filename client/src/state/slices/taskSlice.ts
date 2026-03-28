@@ -6,10 +6,28 @@ export interface Task {
   command: string;
   status: 'pending' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
   progress: number;
+  priority?: 'low' | 'medium' | 'high';
   createdAt: number;
   startedAt?: number;
   completedAt?: number;
-  logs: string[];
+  output?: string;
+  error?: string;
+  metadata?: {
+    estimatedTime?: number;
+    remainingTime?: number;
+    steps?: TaskStep[];
+  };
+}
+
+export interface TaskStep {
+  id: string;
+  name: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  progress: number;
+  startTime?: number;
+  endTime?: number;
+  output?: string;
+  error?: string;
 }
 
 interface TaskState {
@@ -32,7 +50,7 @@ const taskSlice = createSlice({
       state.activeTasks = action.payload;
     },
     addTask: (state, action: PayloadAction<Task>) => {
-      state.activeTasks.push(action.payload);
+      state.activeTasks.unshift(action.payload);
     },
     updateTask: (state, action: PayloadAction<Partial<Task> & { id: string }>) => {
       const task = state.activeTasks.find(t => t.id === action.payload.id);
@@ -47,10 +65,16 @@ const taskSlice = createSlice({
         state.taskHistory.unshift(task);
       }
     },
-    addTaskLog: (state, action: PayloadAction<{ taskId: string; log: string }>) => {
+    setTaskOutput: (state, action: PayloadAction<{ taskId: string; output: string }>) => {
       const task = state.activeTasks.find(t => t.id === action.payload.taskId);
       if (task) {
-        task.logs.push(action.payload.log);
+        task.output = (task.output || '') + action.payload.output;
+      }
+    },
+    setTaskError: (state, action: PayloadAction<{ taskId: string; error: string }>) => {
+      const task = state.activeTasks.find(t => t.id === action.payload.taskId);
+      if (task) {
+        task.error = action.payload.error;
       }
     },
     setLoading: (state, action: PayloadAction<boolean>) => {
@@ -64,7 +88,8 @@ export const {
   addTask,
   updateTask,
   removeTask,
-  addTaskLog,
+  setTaskOutput,
+  setTaskError,
   setLoading,
 } = taskSlice.actions;
 
