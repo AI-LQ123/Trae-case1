@@ -1,4 +1,5 @@
 import { WebSocketMessage, CommandPayload, EventPayload } from '../models/types';
+import { logger } from '../utils/logger';
 
 export interface MessageHandler {
   handle(message: WebSocketMessage, deviceId: string): Promise<void>;
@@ -39,7 +40,10 @@ export class MessageRouter {
         await handler.handle(message, deviceId);
         return true;
       } catch (error) {
-        console.error(`Error handling message ${key}:`, error);
+        logger.error(`Error handling message ${key}: ${(error as Error).message}`, {
+          context: 'MessageRouter',
+          metadata: { key, deviceId, error: (error as Error).message },
+        });
         return false;
       }
     }

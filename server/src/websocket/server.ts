@@ -4,6 +4,8 @@ import { WebSocketMessage } from '../models/types';
 import { ConnectionManager } from './connectionManager';
 import { MessageRouter } from './messageRouter';
 import { WebSocketServerConfig, ConnectionStatus } from './types';
+import { AuthHandler } from './handlers/authHandler';
+import { logger } from '../utils/logger';
 
 export class WebSocketServer {
   private wss: WebSocket.Server;
@@ -26,8 +28,19 @@ export class WebSocketServer {
     this.connectionManager = new ConnectionManager();
     this.messageRouter = new MessageRouter();
 
+    // Register auth handler
+    this.registerAuthHandler();
+
     this.setupWebSocketServer();
     this.startHeartbeat();
+  }
+
+  private registerAuthHandler(): void {
+    const authHandler = new AuthHandler(this);
+    this.messageRouter.registerCommandHandler('auth', authHandler);
+    logger.info('Auth handler registered', {
+      context: 'WebSocketServer',
+    });
   }
 
   private validateConfig(config: WebSocketServerConfig): WebSocketServerConfig {
@@ -49,10 +62,15 @@ export class WebSocketServer {
   private setupWebSocketServer(): void {
     this.wss.on('connection', (ws: WSWebSocket, req) => {
       const clientIp = req.socket.remoteAddress;
-      console.log(`New WebSocket connection from ${clientIp}`);
+      logger.info(`New WebSocket connection from ${clientIp}`, {
+        context: 'WebSocketServer',
+        metadata: { clientIp },
+      });
 
       if (this.connectionManager.size() >= this.config.maxConnections!) {
-        console.warn('Max connections reached, closing new connection');
+        logger.warn('Max connections reached, closing new connection', {
+          context: 'WebSocketServer',
+        });
         ws.close(4000, 'Max connections reached');
         return;
       }
@@ -65,12 +83,18 @@ export class WebSocketServer {
       });
 
       ws.on('close', (code, reason) => {
-        console.log(`Connection closed: ${deviceId}, code: ${code}, reason: ${reason}`);
+        logger.info(`Connection closed: ${deviceId}, code: ${code}, reason: ${reason}`, {
+          context: 'WebSocketServer',
+          metadata: { deviceId, code, reason },
+        });
         this.connectionManager.removeConnection(deviceId);
       });
 
       ws.on('error', (error: Error) => {
-        console.error(`WebSocket error for ${deviceId}:`, error);
+        logger.error(`WebSocket error for ${deviceId}: ${error.message}`, {
+          context: 'WebSocketServer',
+          metadata: { deviceId, error: error.message },
+        });
         this.sendErrorToDevice(deviceId, 'WEBSOCKET_ERROR', 'WebSocket connection error');
         this.connectionManager.removeConnection(deviceId);
       });
@@ -96,6 +120,10 @@ export class WebSocketServer {
       // Check message size
       const messageSize = Buffer.byteLength(data as Buffer);
       if (messageSize > this.config.maxMessageSize!) {
+        logger.warn(`Message size exceeds limit: ${messageSize} bytes`, {
+          context: 'WebSocketServer',
+          metadata: { deviceId, messageSize, limit: this.config.maxMessageSize },
+        });
         this.sendErrorToDevice(deviceId, 'MESSAGE_TOO_LARGE', `Message size exceeds limit of ${this.config.maxMessageSize} bytes`);
         return;
       }
@@ -104,7 +132,9 @@ export class WebSocketServer {
       const connection = this.connectionManager.getConnection(deviceId);
 
       if (!connection) {
-        console.warn(`Message from unknown device: ${deviceId}`);
+        logger.warn(`Message from unknown device: ${deviceId}`, {
+          context: 'WebSocketServer',
+        });
         return;
       }
 
@@ -125,16 +155,22 @@ export class WebSocketServer {
 
       const routed = await this.messageRouter.route(message, deviceId);
       if (!routed) {
-        console.log(`Unhandled message ${message.type} from ${deviceId}:`, message.payload);
+        logger.info(`Unhandled message ${message.type} from ${deviceId}`, {
+          context: 'WebSocketServer',
+          metadata: { deviceId, messageType: message.type, payload: message.payload },
+        });
         this.sendErrorToDevice(deviceId, 'UNHANDLED_MESSAGE', `Message type '${message.type}' is not handled`);
       }
     } catch (error) {
-      console.error(`Failed to parse message from ${deviceId}:`, error);
+      logger.error(`Failed to parse message from ${deviceId}: ${(error as Error).message}`, {
+        context: 'WebSocketServer',
+        metadata: { deviceId, error: (error as Error).message },
+      });
       this.sendErrorToDevice(deviceId, 'INVALID_MESSAGE', 'Failed to parse message');
     }
   }
 
-  private sendErrorToDevice(deviceId: string, code: string, message: string): boolean {
+  public sendErrorToDevice(deviceId: string, code: string, message: string): boolean {
     return this.sendToDevice(deviceId, {
       type: 'event',
       id: this.generateMessageId(),
@@ -157,7 +193,10 @@ export class WebSocketServer {
       for (const deviceId of disconnectedDevices) {
         const connection = this.connectionManager.getConnection(deviceId);
         if (connection) {
-          console.log(`Connection timeout: ${deviceId}`);
+          logger.info(`Connection timeout: ${deviceId}`, {
+            context: 'WebSocketServer',
+            metadata: { deviceId },
+          });
           connection.ws.close(4001, 'Connection timeout');
           this.connectionManager.removeConnection(deviceId);
         }

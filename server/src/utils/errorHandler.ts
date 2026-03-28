@@ -213,7 +213,7 @@ export function setupGlobalErrorHandlers() {
   process.on('uncaughtException', (error) => {
     handleError(error, 'Global', { type: 'uncaughtException' });
     // 记录致命错误后延迟退出，确保日志写入完成
-    logger.fatal('Uncaught exception, exiting...');
+    logger.error('Uncaught exception, exiting...');
     setTimeout(() => process.exit(1), 1000);
   });
 

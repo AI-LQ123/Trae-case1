@@ -3,73 +3,41 @@ export enum LogLevel {
   INFO = 'info',
   WARN = 'warn',
   ERROR = 'error',
-  FATAL = 'fatal'
 }
 
-interface LogOptions {
-  timestamp?: boolean;
+export interface LoggerOptions {
+  level?: LogLevel;
   context?: string;
-  metadata?: Record<string, any>;
-  stack?: string;
+  metadata?: Record<string, unknown>;
 }
 
-export interface LoggerInterface {
-  debug(message: string, options?: LogOptions): void;
-  info(message: string, options?: LogOptions): void;
-  warn(message: string, options?: LogOptions): void;
-  error(message: string, options?: LogOptions): void;
-  fatal(message: string, options?: LogOptions): void;
-  setLevel(level: LogLevel): void;
-  getLevel(): LogLevel;
-  child(context: string): LoggerInterface;
-}
-
-class Logger implements LoggerInterface {
-  private logLevel: LogLevel;
+export class Logger {
+  private level: LogLevel;
 
   constructor(level: LogLevel = LogLevel.INFO) {
-    // 从环境变量读取日志级别
-    const envLevel = process.env.LOG_LEVEL as LogLevel;
-    if (envLevel && Object.values(LogLevel).includes(envLevel)) {
-      this.logLevel = envLevel;
-    } else {
-      this.logLevel = level;
-    }
-  }
-
-  private getTimestamp(): string {
-    return new Date().toISOString();
+    this.level = level;
   }
 
   private shouldLog(level: LogLevel): boolean {
-    const levels = [LogLevel.DEBUG, LogLevel.INFO, LogLevel.WARN, LogLevel.ERROR, LogLevel.FATAL];
-    return levels.indexOf(level) >= levels.indexOf(this.logLevel);
+    const levels = [LogLevel.DEBUG, LogLevel.INFO, LogLevel.WARN, LogLevel.ERROR];
+    return levels.indexOf(level) >= levels.indexOf(this.level);
   }
 
-  private log(level: LogLevel, message: string, options: LogOptions = {}): void {
+  private log(level: LogLevel, message: string, options: LoggerOptions = {}): void {
     if (!this.shouldLog(level)) {
       return;
     }
 
-    const timestamp = options.timestamp === false ? undefined : this.getTimestamp();
-    const context = options.context;
-    const metadata = options.metadata;
-    const stack = options.stack;
+    const timestamp = new Date().toISOString();
+    const context = options.context ? `[${options.context}] ` : '';
+    const metadata = options.metadata ? ` ${JSON.stringify(options.metadata)}` : '';
 
-    // 输出JSON格式日志
-    const logObject = {
-      ...(timestamp && { timestamp }),
-      level: level.toUpperCase(),
-      message,
-      ...(context && { context }),
-      ...(metadata && { metadata }),
-      ...(stack && { stack })
-    };
-
-    const logMessage = JSON.stringify(logObject);
+    const logMessage = `${timestamp} ${level.toUpperCase()} ${context}${message}${metadata}`;
 
     switch (level) {
       case LogLevel.DEBUG:
+        console.debug(logMessage);
+        break;
       case LogLevel.INFO:
         console.log(logMessage);
         break;
@@ -77,76 +45,35 @@ class Logger implements LoggerInterface {
         console.warn(logMessage);
         break;
       case LogLevel.ERROR:
-      case LogLevel.FATAL:
         console.error(logMessage);
         break;
     }
   }
 
-  debug(message: string, options?: LogOptions): void {
+  debug(message: string, options?: LoggerOptions): void {
     this.log(LogLevel.DEBUG, message, options);
   }
 
-  info(message: string, options?: LogOptions): void {
+  info(message: string, options?: LoggerOptions): void {
     this.log(LogLevel.INFO, message, options);
   }
 
-  warn(message: string, options?: LogOptions): void {
+  warn(message: string, options?: LoggerOptions): void {
     this.log(LogLevel.WARN, message, options);
   }
 
-  error(message: string, options?: LogOptions): void {
-    // 自动捕获堆栈信息
-    const stack = options?.stack || new Error().stack;
-    this.log(LogLevel.ERROR, message, { ...options, stack });
-  }
-
-  fatal(message: string, options?: LogOptions): void {
-    // 自动捕获堆栈信息
-    const stack = options?.stack || new Error().stack;
-    this.log(LogLevel.FATAL, message, { ...options, stack });
+  error(message: string, options?: LoggerOptions): void {
+    this.log(LogLevel.ERROR, message, options);
   }
 
   setLevel(level: LogLevel): void {
-    this.logLevel = level;
+    this.level = level;
   }
 
   getLevel(): LogLevel {
-    return this.logLevel;
-  }
-
-  // 创建子logger，继承上下文
-  child(context: string): LoggerInterface {
-    const parent = this;
-    
-    return {
-      debug: (message: string, options?: LogOptions) => {
-        parent.debug(message, { ...options, context: options?.context || context });
-      },
-      info: (message: string, options?: LogOptions) => {
-        parent.info(message, { ...options, context: options?.context || context });
-      },
-      warn: (message: string, options?: LogOptions) => {
-        parent.warn(message, { ...options, context: options?.context || context });
-      },
-      error: (message: string, options?: LogOptions) => {
-        parent.error(message, { ...options, context: options?.context || context });
-      },
-      fatal: (message: string, options?: LogOptions) => {
-        parent.fatal(message, { ...options, context: options?.context || context });
-      },
-      setLevel: (level: LogLevel) => {
-        parent.setLevel(level);
-      },
-      getLevel: () => {
-        return parent.getLevel();
-      },
-      child: (newContext: string) => {
-        return parent.child(`${context}:${newContext}`);
-      }
-    };
+    return this.level;
   }
 }
 
+// Export default logger
 export const logger = new Logger();
-export default logger;
