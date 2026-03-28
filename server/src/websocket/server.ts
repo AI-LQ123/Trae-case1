@@ -5,6 +5,7 @@ import { ConnectionManager } from './connectionManager';
 import { MessageRouter } from './messageRouter';
 import { WebSocketServerConfig, ConnectionStatus } from './types';
 import { AuthHandler } from './handlers/authHandler';
+import { ChatMessageHandler } from './handlers/chatMessageHandler';
 import { logger } from '../utils/logger';
 
 export class WebSocketServer {
@@ -40,6 +41,8 @@ export class WebSocketServer {
 
     // Register auth handler
     this.registerAuthHandler();
+    // Register chat handler
+    this.registerChatHandler();
 
     this.setupWebSocketServer();
     this.startHeartbeat();
@@ -49,6 +52,16 @@ export class WebSocketServer {
     const authHandler = new AuthHandler(this);
     this.messageRouter.registerCommandHandler('auth', authHandler);
     logger.info('Auth handler registered', {
+      context: 'WebSocketServer',
+    });
+  }
+
+  private registerChatHandler(): void {
+    const chatHandler = new ChatMessageHandler(this.connectionManager.getConnectionsMap());
+    this.messageRouter.registerHandler('chat:send', '', chatHandler);
+    this.messageRouter.registerHandler('chat:history', '', chatHandler);
+    this.messageRouter.registerHandler('chat:clear', '', chatHandler);
+    logger.info('Chat handlers registered', {
       context: 'WebSocketServer',
     });
   }

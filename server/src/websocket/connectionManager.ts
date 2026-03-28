@@ -72,4 +72,8 @@ export class ConnectionManager {
   size(): number {
     return this.connections.size;
   }
+
+  getConnectionsMap(): Map<string, Connection> {
+    return this.connections;
+  }
 }

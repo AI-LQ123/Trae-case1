@@ -24,10 +24,10 @@ export class MessageRouter {
   async route(message: WebSocketMessage, deviceId: string): Promise<boolean> {
     let key: string;
 
-    if (message.type === 'command' && 'category' in message.payload) {
+    if (message.type === 'command' && message.payload && 'category' in message.payload) {
       const payload = message.payload as CommandPayload;
       key = `${message.type}:${payload.category}`;
-    } else if (message.type === 'event' && 'category' in message.payload) {
+    } else if (message.type === 'event' && message.payload && 'category' in message.payload) {
       const payload = message.payload as EventPayload;
       key = `${message.type}:${payload.category}`;
     } else {
@@ -45,6 +45,22 @@ export class MessageRouter {
           metadata: { key, deviceId, error: (error as Error).message },
         });
         return false;
+      }
+    }
+
+    // 尝试匹配前缀路由，如 'chat:*'
+    for (const [handlerKey, handler] of this.handlers.entries()) {
+      if (handlerKey.endsWith('*') && key.startsWith(handlerKey.slice(0, -1))) {
+        try {
+          await handler.handle(message, deviceId);
+          return true;
+        } catch (error) {
+          logger.error(`Error handling message ${key} with prefix handler ${handlerKey}: ${(error as Error).message}`, {
+            context: 'MessageRouter',
+            metadata: { key, handlerKey, deviceId, error: (error as Error).message },
+          });
+          return false;
+        }
       }
     }
 

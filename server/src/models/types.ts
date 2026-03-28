@@ -1,11 +1,11 @@
 import WebSocket from 'ws';
 
 export interface WebSocketMessage {
-  type: 'command' | 'event' | 'ping' | 'pong';
+  type: 'command' | 'event' | 'ping' | 'pong' | 'chat:send' | 'chat:message' | 'chat:history' | 'chat:clear' | 'chat:cleared' | 'error';
   id: string;
   timestamp: number;
   deviceId: string;
-  payload: MessagePayload;
+  payload: MessagePayload | ChatMessage | ChatMessage[] | null;
 }
 
 export type MessagePayload =
@@ -13,7 +13,8 @@ export type MessagePayload =
   | EventPayload
   | AuthPayload
   | PingPayload
-  | PongPayload;
+  | PongPayload
+  | ErrorPayload;
 
 export interface CommandPayload {
   category: 'ai_chat' | 'terminal' | 'task' | 'file';
@@ -39,6 +40,18 @@ export interface PongPayload {
   timestamp: number;
   serverTime: number;
 }
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
+}
+
+export interface ErrorPayload {
+  message: string;
+}
+
 
 export interface DeviceInfo {
   deviceId: string;
