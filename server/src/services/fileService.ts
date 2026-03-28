@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { FileInfo, DirectoryInfo, FileSystemItem, ProjectInfo } from '../models/types';
 import { logger } from '../utils/logger';
+import { FileWatcher } from './fileWatcher';
 
 interface FileServiceOptions {
   allowedExtensions?: string[];
@@ -301,15 +302,15 @@ class FileService {
         if (results.length >= maxResults) return;
 
         const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
-        
+
         for (const entry of entries) {
           if (results.length >= maxResults) break;
 
           const fullPath = path.join(dirPath, entry.name);
-          
+
           // 使用 dirent 获取类型信息，避免不必要的 stat 调用
           if (entry.isFile()) {
-            if (this.allowedExtensions.some((ext: string) => entry.name.endsWith(ext)) && 
+            if (this.allowedExtensions.some((ext: string) => entry.name.endsWith(ext)) &&
                 entry.name.toLowerCase().includes(query.toLowerCase())) {
               const stats = await fs.promises.stat(fullPath);
               results.push({
@@ -335,6 +336,48 @@ class FileService {
       logger.error(`Failed to search files ${directoryPath}: ${(error as Error).message}`);
       throw new Error(`Failed to search files: ${(error as Error).message}`);
     }
+  }
+
+  /**
+   * 获取文件统计信息
+   */
+  async getFileStats(filePath: string): Promise<fs.Stats> {
+    try {
+      this.checkPath(filePath);
+      const stats = await fs.promises.stat(filePath);
+      return stats;
+    } catch (error) {
+      logger.error(`Failed to get file stats ${filePath}: ${(error as Error).message}`);
+      throw new Error(`Failed to get file stats: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * 监听目录变化
+   */
+  async watchDirectory(
+    directoryPath: string,
+    callback: (event: string, path: string) => void
+  ): Promise<{ close: () => Promise<void> }> {
+    this.checkPath(directoryPath);
+
+    const watcher = new FileWatcher({
+      rootPath: directoryPath,
+      debounceTime: 100,
+      eventDebounceTime: 500,
+    });
+
+    watcher.onFileChange((event) => {
+      callback(event.type, event.path);
+    });
+
+    watcher.start();
+
+    return {
+      close: async () => {
+        await watcher.stop();
+      },
+    };
   }
 }
 

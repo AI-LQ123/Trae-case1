@@ -97,11 +97,51 @@ npm run ios
 - 使用 Git 进行版本控制
 - 遵循 Conventional Commits 规范
 
+## 开发进度
+
+### 第一阶段：MVP 核心功能 ✅ 已完成
+- ✅ WebSocket 服务端基础
+- ✅ 基础认证与设备配对
+- ✅ WebSocket 客户端基础
+- ✅ 对话界面 UI 框架
+- ✅ 对话功能集成（服务端）
+- ✅ 对话功能集成（客户端）
+- ✅ 通知推送基础
+- ✅ 项目文件浏览（服务端）
+- ✅ 文件监听与实时同步（服务端）
+- ✅ 项目文件浏览（客户端）
+- ✅ 第一阶段集成测试（24个测试用例全部通过）
+
+**测试报告**: [第一阶段集成测试报告](./docs/phase1-integration-test-report.md)
+
+### 第二阶段：增强功能 🚧 待开发
+- 任务管理服务端
+- 任务管理客户端
+- 终端服务端
+- 终端客户端
+- 快捷指令
+- 状态同步机制
+
 ## 文档
 
 - [技术架构](./TECHNICAL_ARCHITECTURE.md)
 - [开发计划](./DEVELOPMENT_PLAN.md)
 - [任务分解](./开发任务分解.md)
+- [第一阶段集成测试报告](./docs/phase1-integration-test-report.md)
+
+## 测试
+
+### 运行集成测试
+
+```bash
+# 设置环境变量
+$env:JWT_SECRET="your-jwt-secret"
+$env:JWT_REFRESH_SECRET="your-jwt-refresh-secret"
+
+# 运行第一阶段集成测试
+cd server
+npm test -- --testPathPattern="phase1.integration.test.ts" --forceExit --coverage
+```
 
 ## License
 

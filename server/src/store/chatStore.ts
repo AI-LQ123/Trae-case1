@@ -158,6 +158,14 @@ export class ChatStore {
 
     return deletedCount;
   }
+
+  // 清除所有会话（用于测试）
+  clearAllSessions(): void {
+    this.sessions.clear();
+    this.saveSessions().catch(error => {
+      console.error('Error saving sessions after clear:', error);
+    });
+  }
 }
 
 export const chatStore = new ChatStore();
