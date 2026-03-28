@@ -10,13 +10,20 @@ interface LogOptions {
   timestamp?: boolean;
   context?: string;
   metadata?: Record<string, any>;
+  stack?: string;
 }
 
 class Logger {
   private logLevel: LogLevel;
 
   constructor(level: LogLevel = LogLevel.INFO) {
-    this.logLevel = level;
+    // 从环境变量读取日志级别
+    const envLevel = process.env.LOG_LEVEL as LogLevel;
+    if (envLevel && Object.values(LogLevel).includes(envLevel)) {
+      this.logLevel = envLevel;
+    } else {
+      this.logLevel = level;
+    }
   }
 
   private getTimestamp(): string {
@@ -33,11 +40,22 @@ class Logger {
       return;
     }
 
-    const timestamp = options.timestamp !== false ? this.getTimestamp() : '';
-    const context = options.context ? `[${options.context}]` : '';
-    const metadata = options.metadata ? ` ${JSON.stringify(options.metadata)}` : '';
+    const timestamp = options.timestamp !== false ? this.getTimestamp() : new Date().toISOString();
+    const context = options.context;
+    const metadata = options.metadata;
+    const stack = options.stack;
 
-    const logMessage = `${timestamp} ${level.toUpperCase()} ${context} ${message}${metadata}`;
+    // 输出JSON格式日志
+    const logObject = {
+      timestamp,
+      level: level.toUpperCase(),
+      message,
+      ...(context && { context }),
+      ...(metadata && { metadata }),
+      ...(stack && { stack })
+    };
+
+    const logMessage = JSON.stringify(logObject);
 
     switch (level) {
       case LogLevel.DEBUG:
@@ -67,11 +85,15 @@ class Logger {
   }
 
   error(message: string, options?: LogOptions): void {
-    this.log(LogLevel.ERROR, message, options);
+    // 自动捕获堆栈信息
+    const stack = options?.stack || new Error().stack;
+    this.log(LogLevel.ERROR, message, { ...options, stack });
   }
 
   fatal(message: string, options?: LogOptions): void {
-    this.log(LogLevel.FATAL, message, options);
+    // 自动捕获堆栈信息
+    const stack = options?.stack || new Error().stack;
+    this.log(LogLevel.FATAL, message, { ...options, stack });
   }
 
   setLevel(level: LogLevel): void {
@@ -80,6 +102,20 @@ class Logger {
 
   getLevel(): LogLevel {
     return this.logLevel;
+  }
+
+  // 创建子logger，继承上下文
+  child(context: string): Logger {
+    const childLogger = new Logger(this.logLevel);
+    // 重写log方法，自动添加上下文
+    const originalLog = childLogger.log;
+    childLogger.log = (level, message, options = {}) => {
+      originalLog.call(childLogger, level, message, {
+        ...options,
+        context: options.context || context
+      });
+    };
+    return childLogger;
   }
 }
 
