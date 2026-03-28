@@ -23,14 +23,14 @@ export class NotificationError extends Error {
 }
 
 export class NotificationService {
-  private options: NotificationOptions;
+  private options: Required<NotificationOptions>;
   private notificationQueue: Map<string, Notification> = new Map();
 
   constructor(options: NotificationOptions = {}) {
     this.options = {
-      maxRetries: options.maxRetries || 3,
-      retryDelay: options.retryDelay || 1000,
-      expirationTime: options.expirationTime || 30000,
+      maxRetries: options.maxRetries ?? 3,
+      retryDelay: options.retryDelay ?? 1000,
+      expirationTime: options.expirationTime ?? 30000,
     };
   }
 
@@ -41,6 +41,11 @@ export class NotificationService {
     message: string,
     data?: Record<string, any>
   ): Promise<Notification> {
+    // 验证connection是否为WebSocket实例
+    if (!(connection instanceof WebSocket)) {
+      throw new NotificationError('INVALID_CONNECTION', 'Invalid WebSocket connection');
+    }
+
     const notification: Notification = {
       id: this.generateId(),
       type,
@@ -66,27 +71,19 @@ export class NotificationService {
   private async sendMessage(connection: WebSocket, notification: Notification): Promise<void> {
     let attempts = 0;
 
-    while (attempts < this.options.maxRetries!) {
+    while (attempts < this.options.maxRetries) {
       try {
-        if (connection.readyState === WebSocket.OPEN) {
-          connection.send(JSON.stringify({
-            type: 'notification',
-            data: notification,
-          }));
-          return;
-        } else {
-          throw new NotificationError('CONNECTION_CLOSED', 'WebSocket connection is closed');
+        if (connection.readyState !== WebSocket.OPEN) {
+          throw new Error('WebSocket not open');
         }
+        connection.send(JSON.stringify({ type: 'notification', data: notification }));
+        this.notificationQueue.delete(notification.id); // 发送成功即删除
+        return;
       } catch (error) {
         attempts++;
-
-        if (attempts < this.options.maxRetries!) {
-          console.warn(`Notification send failed (attempt ${attempts}/${this.options.maxRetries!}):`, error);
-          await this.sleep(this.options.retryDelay!);
-          continue;
-        }
-
-        throw error;
+        if (attempts === this.options.maxRetries) throw error;
+        // 指数退避
+        await this.sleep(this.options.retryDelay * attempts);
       }
     }
   }
@@ -102,7 +99,7 @@ export class NotificationService {
   private cleanupExpiredNotifications(): void {
     const now = Date.now();
     for (const [id, notification] of this.notificationQueue.entries()) {
-      if (now - notification.timestamp > this.options.expirationTime!) {
+      if (now - notification.timestamp > this.options.expirationTime) {
         this.notificationQueue.delete(id);
       }
     }

@@ -20,13 +20,17 @@ if (!fs.existsSync(STORAGE_DIR)) {
 export class ChatStore {
   private sessions: Map<string, ChatSession> = new Map();
   private loaded = false;
+  private writeQueue: Promise<void> = Promise.resolve();
+  private static cleanupTimer: NodeJS.Timeout | null = null;
 
   constructor() {
     this.loadSessions().catch(error => {
       console.error('Error loading sessions in constructor:', error);
     });
-    // 每天清理一次过期会话
-    setInterval(() => this.cleanupExpiredSessions(), 24 * 60 * 60 * 1000);
+    // 初始化静态清理定时器（只创建一次）
+    if (!ChatStore.cleanupTimer) {
+      ChatStore.cleanupTimer = setInterval(() => this.cleanupExpiredSessions(), 24 * 60 * 60 * 1000);
+    }
   }
 
   private async loadSessions(): Promise<void> {
@@ -52,12 +56,19 @@ export class ChatStore {
   private async saveSessions(): Promise<void> {
     if (!this.loaded) return;
     
-    try {
-      const sessions = Array.from(this.sessions.values());
-      await fs.promises.writeFile(SESSIONS_FILE, JSON.stringify(sessions, null, 2));
-    } catch (error) {
-      console.error('Failed to save chat sessions:', error);
-    }
+    // 使用写入队列确保并发写入安全
+    this.writeQueue = this.writeQueue.then(async () => {
+      try {
+        const sessions = Array.from(this.sessions.values());
+        await fs.promises.writeFile(SESSIONS_FILE, JSON.stringify(sessions, null, 2));
+      } catch (error) {
+        console.error('Failed to save chat sessions:', error);
+      }
+    }).catch(error => {
+      console.error('Error in write queue:', error);
+    });
+    
+    await this.writeQueue;
   }
 
   async createSession(sessionId: string): Promise<ChatSession> {
@@ -114,8 +125,18 @@ export class ChatStore {
     await this.saveSessions();
   }
 
-  getAllSessions(): ChatSession[] {
-    return Array.from(this.sessions.values());
+  getAllSessions(page: number = 1, pageSize: number = 100): ChatSession[] {
+    const sessions = Array.from(this.sessions.values());
+    
+    // 添加分页支持
+    if (page < 1) page = 1;
+    if (pageSize < 1) pageSize = 100;
+    if (pageSize > 1000) pageSize = 1000; // 限制最大页大小
+    
+    const startIndex = (page - 1) * pageSize;
+    const endIndex = startIndex + pageSize;
+    
+    return sessions.slice(startIndex, endIndex);
   }
 
   // 清理过期会话（超过30天的会话）

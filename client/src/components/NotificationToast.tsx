@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Animated, Dimensions, TouchableOpacity } from 'react-native';
 import { Notification } from '../state/slices/notificationSlice';
 
@@ -6,6 +6,7 @@ interface NotificationToastProps {
   notification: Notification;
   onDismiss: (id: string) => void;
   duration?: number;
+  position?: 'top' | 'bottom';
 }
 
 const { width } = Dimensions.get('window');
@@ -14,8 +15,10 @@ export const NotificationToast: React.FC<NotificationToastProps> = ({
   notification,
   onDismiss,
   duration = 3000,
+  position = 'top',
 }) => {
-  const translateY = React.useRef(new Animated.Value(-100)).current;
+  const translateY = useRef(new Animated.Value(position === 'top' ? -100 : 100)).current;
+  const [isMounted, setIsMounted] = useState(true);
 
   useEffect(() => {
     // 动画显示
@@ -30,16 +33,22 @@ export const NotificationToast: React.FC<NotificationToastProps> = ({
       dismiss();
     }, duration);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      setIsMounted(false);
+    };
   }, []);
 
   const dismiss = () => {
     Animated.timing(translateY, {
-      toValue: -100,
+      toValue: position === 'top' ? -100 : 100,
       duration: 300,
       useNativeDriver: true,
     }).start(() => {
-      onDismiss(notification.id);
+      // 检查组件是否仍挂载
+      if (isMounted) {
+        onDismiss(notification.id);
+      }
     });
   };
 
@@ -61,6 +70,7 @@ export const NotificationToast: React.FC<NotificationToastProps> = ({
     <Animated.View
       style={[
         styles.container,
+        position === 'top' ? styles.topPosition : styles.bottomPosition,
         {
           backgroundColor: getBackgroundColor(),
           transform: [{ translateY }],
@@ -81,7 +91,6 @@ export const NotificationToast: React.FC<NotificationToastProps> = ({
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    top: 50,
     left: 16,
     right: 16,
     maxWidth: width - 32,
@@ -99,6 +108,12 @@ const styles = StyleSheet.create({
     shadowRadius: 3.84,
     elevation: 5,
     zIndex: 9999,
+  },
+  topPosition: {
+    top: 50,
+  },
+  bottomPosition: {
+    bottom: 50,
   },
   content: {
     flex: 1,

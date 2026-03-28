@@ -15,7 +15,7 @@ export class ChatMessageHandler implements MessageHandler {
     const connection = this.connectionManager.getConnection(deviceId);
     if (connection) {
       const chatHandler = new ChatHandler(connection.ws, deviceId);
-      chatHandler.handleChatMessage(message);
+      await chatHandler.handleChatMessage(message);
     }
   }
 }

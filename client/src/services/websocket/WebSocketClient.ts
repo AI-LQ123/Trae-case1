@@ -6,6 +6,7 @@ import {
   setLatency,
   setError,
 } from '../../state/slices/websocketSlice';
+import { addNotification } from '../../state/slices/notificationSlice';
 import { ReconnectionManager } from './reconnection';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -116,6 +117,12 @@ export class WebSocketClient {
         const latency = Date.now() - message.timestamp;
         store.dispatch(setLastPingTime(Date.now()));
         store.dispatch(setLatency(latency));
+        return;
+      }
+
+      // 处理通知消息
+      if (message.type === 'notification') {
+        store.dispatch(addNotification(message.payload as any));
         return;
       }
 

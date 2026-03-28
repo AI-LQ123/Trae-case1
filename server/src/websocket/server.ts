@@ -14,6 +14,7 @@ export class WebSocketServer {
   private messageRouter: MessageRouter;
   private heartbeatInterval: NodeJS.Timeout | null = null;
   private config: WebSocketServerConfig;
+  private rateLimiter = new Map<string, number[]>();
 
   constructor(server: HttpServer, config: WebSocketServerConfig = {}) {
     // Read configuration from environment variables
@@ -140,6 +141,16 @@ export class WebSocketServer {
 
   private async handleMessage(deviceId: string, data: WebSocket.RawData): Promise<void> {
     try {
+      // Check rate limit
+      if (!this.checkRateLimit(deviceId)) {
+        logger.warn(`Rate limit exceeded for device: ${deviceId}`, {
+          context: 'WebSocketServer',
+          metadata: { deviceId },
+        });
+        this.sendErrorToDevice(deviceId, 'RATE_LIMIT_EXCEEDED', 'Rate limit exceeded, please slow down');
+        return;
+      }
+
       // Check message size
       const messageSize = Buffer.byteLength(data as Buffer);
       if (messageSize > this.config.maxMessageSize!) {
@@ -180,7 +191,9 @@ export class WebSocketServer {
       const isAuthCommand = message.type === 'command' && message.payload && 'action' in message.payload && 
         (message.payload.action === 'generate_pairing_code' || message.payload.action === 'pair' || message.payload.action === 'authenticate');
       
-      if (message.type !== 'ping' && !isAuthCommand) {
+      // 允许ping消息和认证相关消息，其他消息需要认证
+      const isPingMessage = message.type === 'ping' as any;
+      if (!isPingMessage && !isAuthCommand) {
         if (!connection.isAuthenticated) {
           logger.warn(`Unauthenticated device ${deviceId} trying to send message: ${message.type}`, {
             context: 'WebSocketServer',
@@ -284,6 +297,18 @@ export class WebSocketServer {
 
   private generateMessageId(): string {
     return `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  private checkRateLimit(deviceId: string): boolean {
+    const now = Date.now();
+    const timestamps = this.rateLimiter.get(deviceId) || [];
+    const recent = timestamps.filter(t => now - t < 60000); // 1分钟内
+    if (recent.length > 60) { // 最多60条/分钟
+      return false;
+    }
+    recent.push(now);
+    this.rateLimiter.set(deviceId, recent);
+    return true;
   }
 
   public close(): void {

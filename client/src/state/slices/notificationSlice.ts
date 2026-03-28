@@ -27,7 +27,7 @@ const notificationSlice = createSlice({
     addNotification: (state, action: PayloadAction<Notification>) => {
       state.notifications.unshift(action.payload);
       state.unreadCount += 1;
-      
+
       // 限制通知数量，只保留最近20条
       if (state.notifications.length > 20) {
         state.notifications = state.notifications.slice(0, 20);
@@ -35,11 +35,10 @@ const notificationSlice = createSlice({
     },
     dismissNotification: (state, action: PayloadAction<string>) => {
       const notification = state.notifications.find(n => n.id === action.payload);
-      if (notification) {
+      // 修复：检查通知是否存在且未被dismissed过
+      if (notification && !notification.dismissed) {
         notification.dismissed = true;
-        if (state.unreadCount > 0) {
-          state.unreadCount -= 1;
-        }
+        state.unreadCount = Math.max(0, state.unreadCount - 1);
       }
     },
     dismissAllNotifications: (state) => {
@@ -55,6 +54,21 @@ const notificationSlice = createSlice({
       state.notifications = [];
       state.unreadCount = 0;
     },
+    // 添加清理过期通知的reducer
+    clearExpiredNotifications: (state, action: PayloadAction<number>) => {
+      const expirationTime = action.payload;
+      const now = Date.now();
+      state.notifications = state.notifications.filter(n => {
+        if (now - n.timestamp > expirationTime) {
+          // 如果过期通知未读，减少未读计数
+          if (!n.dismissed) {
+            state.unreadCount = Math.max(0, state.unreadCount - 1);
+          }
+          return false;
+        }
+        return true;
+      });
+    },
   },
 });
 
@@ -64,6 +78,7 @@ export const {
   dismissAllNotifications,
   clearDismissedNotifications,
   clearAllNotifications,
+  clearExpiredNotifications,
 } = notificationSlice.actions;
 
 export default notificationSlice.reducer;

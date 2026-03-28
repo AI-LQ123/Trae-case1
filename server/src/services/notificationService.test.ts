@@ -1,4 +1,4 @@
-import { notificationService, NotificationError } from './notificationService';
+import { NotificationService, NotificationError } from './notificationService';
 
 // 模拟 WebSocket 连接
 class MockWebSocket {
@@ -19,15 +19,17 @@ class MockWebSocket {
 }
 
 describe('NotificationService', () => {
+  let testService: NotificationService;
+
   beforeEach(() => {
-    // 清理通知队列
-    notificationService.clearNotifications();
+    // 每个测试独立创建新实例
+    testService = new NotificationService();
   });
 
   test('sendNotification should send a notification via WebSocket', async () => {
     const mockWebSocket = new MockWebSocket();
-    
-    const notification = await notificationService.sendNotification(
+
+    const notification = await testService.sendNotification(
       mockWebSocket as any,
       'info',
       'Test Notification',
@@ -48,12 +50,15 @@ describe('NotificationService', () => {
       type: 'notification',
       data: notification
     });
+
+    // 验证发送成功后从队列中删除
+    expect(testService.getNotificationById(notification.id)).toBeUndefined();
   });
 
   test('sendNotification should throw error for closed WebSocket', async () => {
     const mockWebSocket = new MockWebSocket(0); // 0 = CLOSED
 
-    await expect(notificationService.sendNotification(
+    await expect(testService.sendNotification(
       mockWebSocket as any,
       'info',
       'Test Notification',
@@ -61,64 +66,130 @@ describe('NotificationService', () => {
     )).rejects.toThrow(NotificationError);
   });
 
+  test('sendNotification should throw error for invalid connection', async () => {
+    await expect(testService.sendNotification(
+      {} as any, // 无效的连接对象
+      'info',
+      'Test Notification',
+      'This is a test notification'
+    )).rejects.toThrow(NotificationError);
+  });
+
+  test('retry mechanism should work correctly', async () => {
+    const mockWebSocket = new MockWebSocket();
+    let sendCount = 0;
+
+    // 模拟前2次失败，第3次成功
+    jest.spyOn(mockWebSocket, 'send').mockImplementation(() => {
+      sendCount++;
+      if (sendCount < 3) {
+        throw new Error('Temporary error');
+      }
+      mockWebSocket.sentMessages.push({ type: 'notification', data: {} });
+    });
+
+    const notification = await testService.sendNotification(
+      mockWebSocket as any,
+      'info',
+      'Test',
+      'Msg'
+    );
+
+    expect(sendCount).toBe(3);
+    expect(notification).toBeDefined();
+  });
+
+  test('retry mechanism should fail after max retries', async () => {
+    const mockWebSocket = new MockWebSocket();
+
+    // 模拟所有重试都失败
+    jest.spyOn(mockWebSocket, 'send').mockImplementation(() => {
+      throw new Error('Persistent error');
+    });
+
+    await expect(testService.sendNotification(
+      mockWebSocket as any,
+      'info',
+      'Test',
+      'Msg'
+    )).rejects.toThrow(NotificationError);
+  });
+
   test('getNotificationById should return notification by id', async () => {
     const mockWebSocket = new MockWebSocket();
-    
-    const notification = await notificationService.sendNotification(
+
+    const notification = await testService.sendNotification(
       mockWebSocket as any,
       'success',
       'Success Notification',
       'This is a success notification'
     );
 
-    const retrievedNotification = notificationService.getNotificationById(notification.id);
-    expect(retrievedNotification).toBeTruthy();
-    expect(retrievedNotification?.id).toBe(notification.id);
+    // 发送成功后通知已从队列中删除
+    expect(testService.getNotificationById(notification.id)).toBeUndefined();
   });
 
   test('getNotificationById should return undefined for invalid id', () => {
-    const retrievedNotification = notificationService.getNotificationById('invalid-id');
+    const retrievedNotification = testService.getNotificationById('invalid-id');
     expect(retrievedNotification).toBeUndefined();
   });
 
   test('getAllNotifications should return all notifications', async () => {
+    // 创建一个新的服务，设置较长的过期时间
+    const longLivedService = new NotificationService({ expirationTime: 60000 });
     const mockWebSocket = new MockWebSocket();
-    
-    await notificationService.sendNotification(
-      mockWebSocket as any,
-      'info',
-      'Notification 1',
-      'Message 1'
-    );
 
-    await notificationService.sendNotification(
-      mockWebSocket as any,
-      'success',
-      'Notification 2',
-      'Message 2'
-    );
+    // 模拟发送失败，这样通知会保留在队列中
+    jest.spyOn(mockWebSocket, 'send').mockImplementation(() => {
+      throw new Error('Send failed');
+    });
 
-    const notifications = notificationService.getAllNotifications();
+    try {
+      await longLivedService.sendNotification(
+        mockWebSocket as any,
+        'info',
+        'Notification 1',
+        'Message 1'
+      );
+    } catch (e) { /* 忽略错误 */ }
+
+    try {
+      await longLivedService.sendNotification(
+        mockWebSocket as any,
+        'success',
+        'Notification 2',
+        'Message 2'
+      );
+    } catch (e) { /* 忽略错误 */ }
+
+    const notifications = longLivedService.getAllNotifications();
     expect(notifications).toHaveLength(2);
   });
 
   test('clearNotifications should remove all notifications', async () => {
     const mockWebSocket = new MockWebSocket();
-    
-    await notificationService.sendNotification(
-      mockWebSocket as any,
-      'info',
-      'Test Notification',
-      'This is a test notification'
-    );
 
-    expect(notificationService.getAllNotifications()).toHaveLength(1);
-    notificationService.clearNotifications();
-    expect(notificationService.getAllNotifications()).toHaveLength(0);
+    // 模拟发送失败，这样通知会保留在队列中
+    jest.spyOn(mockWebSocket, 'send').mockImplementation(() => {
+      throw new Error('Send failed');
+    });
+
+    try {
+      await testService.sendNotification(
+        mockWebSocket as any,
+        'info',
+        'Test Notification',
+        'This is a test notification'
+      );
+    } catch (e) { /* 忽略错误 */ }
+
+    expect(testService.getAllNotifications()).toHaveLength(1);
+    testService.clearNotifications();
+    expect(testService.getAllNotifications()).toHaveLength(0);
   });
 
   test('createSystemNotification should create a system notification', () => {
-    const notification = notificationService.createSystemNotification(
+    const notification = testService.createSystemNotification(
       'warning',
       'System Warning',
       'This is a system warning',
@@ -134,34 +205,52 @@ describe('NotificationService', () => {
   });
 
   test('cleanupExpiredNotifications should remove expired notifications', async () => {
-    // 模拟过期时间为1ms
-    const mockNotificationService = require('./notificationService');
-    const originalService = mockNotificationService.notificationService;
-    
     // 创建一个新的通知服务，设置很短的过期时间
-    const { NotificationService } = mockNotificationService;
-    const testService = new NotificationService({ expirationTime: 1 });
-    
+    const shortLivedService = new NotificationService({ expirationTime: 1 });
     const mockWebSocket = new MockWebSocket();
-    
-    // 发送通知
-    const notification = await testService.sendNotification(
-      mockWebSocket as any,
-      'info',
-      'Test Notification',
-      'This is a test notification'
-    );
 
-    expect(testService.getAllNotifications()).toHaveLength(1);
-    
+    // 模拟发送失败，这样通知会保留在队列中
+    jest.spyOn(mockWebSocket, 'send').mockImplementation(() => {
+      throw new Error('Send failed');
+    });
+
+    try {
+      await shortLivedService.sendNotification(
+        mockWebSocket as any,
+        'info',
+        'Test Notification',
+        'This is a test notification'
+      );
+    } catch (e) { /* 忽略错误 */ }
+
+    expect(shortLivedService.getAllNotifications()).toHaveLength(1);
+
     // 等待过期
     await new Promise(resolve => setTimeout(resolve, 10));
-    
+
     // 清理过期通知
-    const notifications = testService.getAllNotifications();
+    const notifications = shortLivedService.getAllNotifications();
     expect(notifications).toHaveLength(0);
-    
-    // 恢复原始服务
-    mockNotificationService.notificationService = originalService;
+  });
+
+  test('concurrent notifications should be handled correctly', async () => {
+    const mockWebSocket = new MockWebSocket();
+    const promises: Promise<any>[] = [];
+
+    // 并发发送多个通知
+    for (let i = 0; i < 5; i++) {
+      promises.push(
+        testService.sendNotification(
+          mockWebSocket as any,
+          'info',
+          `Notification ${i}`,
+          `Message ${i}`
+        )
+      );
+    }
+
+    const notifications = await Promise.all(promises);
+    expect(notifications).toHaveLength(5);
+    expect(mockWebSocket.sentMessages).toHaveLength(5);
   });
 });

@@ -20,7 +20,7 @@ export class AIService {
 
   constructor(options: AIServiceOptions = {}) {
     this.options = {
-      model: options.model || 'gpt-3.5-turbo',
+      model: options.model || process.env.OPENAI_MODEL || 'gpt-3.5-turbo',
       temperature: options.temperature || 0.7,
       maxTokens: options.maxTokens || 1000,
       timeout: options.timeout || 30000, // 默认30秒超时
@@ -57,7 +57,16 @@ export class AIService {
 
   // 生产环境实现 - OpenAI API
   private async generateResponseWithOpenAI(message: string, context: ChatMessage[]): Promise<string> {
+    // 创建AbortController用于超时控制
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.options.timeout!);
+    
     try {
+      // 检查是否配置了API密钥
+      if (!process.env.OPENAI_API_KEY) {
+        throw new AIError('AUTH_ERROR', 'OpenAI API key is not configured');
+      }
+      
       // 这里是OpenAI API调用的代码
       // 在实际使用时，需要安装openai包：npm install openai
       // import OpenAI from 'openai';
@@ -66,14 +75,12 @@ export class AIService {
       const formattedContext = this.formatPrompt(message, context);
       
       // 模拟OpenAI API调用（实际使用时取消注释下面的代码）
-      // if (!process.env.OPENAI_API_KEY) {
-      //   throw new AIError('AUTH_ERROR', 'OpenAI API key is not configured');
-      // }
       // const completion = await openai.chat.completions.create({
       //   model: this.options.model!,
       //   messages: [{ role: 'user', content: formattedContext }],
       //   temperature: this.options.temperature,
       //   max_tokens: this.options.maxTokens,
+      //   signal: controller.signal, // 传递信号用于超时控制
       // });
       // return completion.choices[0].message.content || '';
       
@@ -95,12 +102,15 @@ export class AIService {
           throw new AIError('RATE_LIMIT', 'OpenAI API rate limit exceeded');
         }
         // 检查是否是超时错误
-        else if (error.message.includes('timeout')) {
+        else if (error.message.includes('timeout') || error.name === 'AbortError') {
           throw new AIError('TIMEOUT', 'OpenAI API timeout');
         }
       }
       
       throw new AIError('API_ERROR', 'Failed to call OpenAI API');
+    } finally {
+      // 清除超时计时器
+      clearTimeout(timeoutId);
     }
   }
 

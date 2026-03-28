@@ -46,10 +46,7 @@ describe('ChatHandler', () => {
     };
 
     // 处理消息
-    chatHandler.handleChatMessage(message);
-
-    // 等待AI响应
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    await chatHandler.handleChatMessage(message);
 
     // 验证消息已发送到客户端
     expect(mockWebSocket.sentMessages).toHaveLength(2);
@@ -59,7 +56,7 @@ describe('ChatHandler', () => {
     expect(mockWebSocket.sentMessages[1].payload.role).toBe('assistant');
   });
 
-  test('should handle chat:history message', () => {
+  test('should handle chat:history message', async () => {
     // 先添加一些消息到会话
     const chatMessage: ChatMessage = {
       id: 'test-message-1',
@@ -68,8 +65,8 @@ describe('ChatHandler', () => {
       timestamp: new Date().toISOString(),
     };
 
-    const session = chatStore.createSession(sessionId);
-    chatStore.addMessage(sessionId, chatMessage);
+    const session = await chatStore.createSession(sessionId);
+    await chatStore.addMessage(sessionId, chatMessage);
 
     const message: WebSocketMessage = {
       type: 'chat:history',
@@ -80,7 +77,7 @@ describe('ChatHandler', () => {
     };
 
     // 处理消息
-    chatHandler.handleChatMessage(message);
+    await chatHandler.handleChatMessage(message);
 
     // 验证历史消息已发送到客户端
     expect(mockWebSocket.sentMessages).toHaveLength(1);
@@ -88,7 +85,7 @@ describe('ChatHandler', () => {
     expect(mockWebSocket.sentMessages[0].payload).toHaveLength(1);
   });
 
-  test('should handle chat:clear message', () => {
+  test('should handle chat:clear message', async () => {
     // 先添加一些消息到会话
     const chatMessage: ChatMessage = {
       id: 'test-message-1',
@@ -97,8 +94,8 @@ describe('ChatHandler', () => {
       timestamp: new Date().toISOString(),
     };
 
-    const session = chatStore.createSession(sessionId);
-    chatStore.addMessage(sessionId, chatMessage);
+    const session = await chatStore.createSession(sessionId);
+    await chatStore.addMessage(sessionId, chatMessage);
 
     const message: WebSocketMessage = {
       type: 'chat:clear',
@@ -109,7 +106,7 @@ describe('ChatHandler', () => {
     };
 
     // 处理消息
-    chatHandler.handleChatMessage(message);
+    await chatHandler.handleChatMessage(message);
 
     // 验证聊天已清除
     expect(mockWebSocket.sentMessages).toHaveLength(1);
@@ -121,17 +118,22 @@ describe('ChatHandler', () => {
     expect(newSession?.messages).toHaveLength(0);
   });
 
-  test('should handle invalid chat message format', () => {
+  test('should handle invalid chat message format', async () => {
     const invalidMessage: WebSocketMessage = {
       type: 'chat:send',
       id: 'test-msg-4',
       timestamp: Date.now(),
       deviceId: 'test-device',
-      payload: { content: 'Hello' }, // 缺少role
+      payload: {
+        id: 'test-invalid-msg',
+        role: 'user',
+        content: '', // 空内容，这是无效的消息格式
+        timestamp: new Date().toISOString()
+      },
     };
 
     // 处理消息
-    chatHandler.handleChatMessage(invalidMessage);
+    await chatHandler.handleChatMessage(invalidMessage);
 
     // 验证错误消息已发送
     expect(mockWebSocket.sentMessages).toHaveLength(1);

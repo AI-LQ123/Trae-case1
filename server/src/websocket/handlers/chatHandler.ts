@@ -3,10 +3,17 @@ import { ChatMessage, WebSocketMessage } from '../../models/types';
 import { chatStore } from '../../store/chatStore';
 import { aiService, AIError } from '../../services/aiService';
 
+// 定义payload类型
+interface ChatPayload {
+  sessionId?: string;
+  message?: ChatMessage;
+}
+
 export class ChatHandler {
   private connection: WebSocket;
   private deviceId: string;
-  private messageQueue: Map<string, Promise<void>> = new Map();
+  private messageQueue: Map<string, { promise: Promise<void>; timeout: NodeJS.Timeout }> = new Map();
+  private static readonly QUEUE_TIMEOUT = 5 * 60 * 1000; // 5分钟超时
 
   constructor(connection: WebSocket, deviceId: string) {
     this.connection = connection;

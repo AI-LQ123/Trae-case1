@@ -14,7 +14,7 @@ describe('WebSocketServer', () => {
     httpServer = http.createServer();
     wsServer = new WebSocketServer(httpServer, {
       heartbeatInterval: 1000,
-      connectionTimeout: 2000,
+      connectionTimeout: 5000,
       maxConnections: 5,
       maxMessageSize: 1024, // 1KB for testing
     });
@@ -28,7 +28,9 @@ describe('WebSocketServer', () => {
     if (client && client.readyState === WebSocket.OPEN) {
       client.close();
     }
-    wsServer.close();
+    if (wsServer) {
+      wsServer.close();
+    }
     httpServer.close(done);
   });
 
