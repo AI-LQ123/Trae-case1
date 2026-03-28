@@ -7,6 +7,7 @@ import { MessageHandler } from '../messageRouter';
 export class TerminalHandler implements MessageHandler {
   private connectionManager: ConnectionManager;
   private outputSubscriptions: Map<string, Set<string>> = new Map();
+  private deviceCallbacks: Map<string, Map<string, (output: TerminalOutput) => void>> = new Map();
 
   constructor(connectionManager: ConnectionManager) {
     this.connectionManager = connectionManager;
@@ -75,7 +76,6 @@ export class TerminalHandler implements MessageHandler {
           cwd: session.cwd,
           createdAt: session.createdAt,
           status: session.status,
-          processId: session.processId,
         },
       });
 
@@ -236,9 +236,12 @@ export class TerminalHandler implements MessageHandler {
 
       this.subscribeDeviceToSession(deviceId, sessionId);
 
-      terminalManager.registerOutputCallback(sessionId, (output: TerminalOutput) => {
+      const callback = (output: TerminalOutput) => {
         this.sendTerminalOutputToSubscribers(sessionId, output);
-      });
+      };
+
+      this.storeDeviceCallback(deviceId, sessionId, callback);
+      terminalManager.registerOutputCallback(sessionId, callback);
 
       this.sendResponse(deviceId, message.id, {
         category: 'terminal',
@@ -270,6 +273,11 @@ export class TerminalHandler implements MessageHandler {
       if (!sessionId) {
         this.sendError(deviceId, message.id, 'Missing sessionId');
         return;
+      }
+
+      const callback = this.getDeviceCallback(deviceId, sessionId);
+      if (callback) {
+        terminalManager.unregisterOutputCallback(sessionId, callback);
       }
 
       this.unsubscribeDeviceFromSession(deviceId, sessionId);
@@ -306,8 +314,26 @@ export class TerminalHandler implements MessageHandler {
       subscribers.delete(deviceId);
       if (subscribers.size === 0) {
         this.outputSubscriptions.delete(sessionId);
-        terminalManager.unregisterOutputCallback(sessionId);
       }
+    }
+    this.removeDeviceCallback(deviceId, sessionId);
+  }
+
+  private storeDeviceCallback(deviceId: string, sessionId: string, callback: (output: TerminalOutput) => void): void {
+    if (!this.deviceCallbacks.has(sessionId)) {
+      this.deviceCallbacks.set(sessionId, new Map());
+    }
+    this.deviceCallbacks.get(sessionId)!.set(deviceId, callback);
+  }
+
+  private getDeviceCallback(deviceId: string, sessionId: string): ((output: TerminalOutput) => void) | undefined {
+    return this.deviceCallbacks.get(sessionId)?.get(deviceId);
+  }
+
+  private removeDeviceCallback(deviceId: string, sessionId: string): void {
+    this.deviceCallbacks.get(sessionId)?.delete(deviceId);
+    if (this.deviceCallbacks.get(sessionId)?.size === 0) {
+      this.deviceCallbacks.delete(sessionId);
     }
   }
 
@@ -396,5 +422,6 @@ export class TerminalHandler implements MessageHandler {
       terminalManager.unregisterOutputCallback(sessionId);
     }
     this.outputSubscriptions.clear();
+    this.deviceCallbacks.clear();
   }
 }

@@ -9,7 +9,6 @@ export interface TerminalSession {
   cwd: string;
   createdAt: number;
   status: 'active' | 'inactive' | 'closed';
-  processId?: number;
   ptyProcess?: pty.IPty;
 }
 
@@ -34,8 +33,24 @@ export interface TerminalResizeRequest {
 type OutputCallback = (output: TerminalOutput) => void;
 
 export class TerminalManager {
-  private sessions: Map<string, TerminalSession> = new Map();
-  private outputCallbacks: Map<string, OutputCallback> = new Map();
+  private sessions: Map<string, TerminalSession & { ptyProcess?: pty.IPty; processId?: number }> = new Map();
+  private outputCallbacks: Map<string, Set<OutputCallback>> = new Map();
+  private static readonly MAX_SESSIONS = 20;
+  private static readonly SAFE_ENV_VARS = [
+    'PATH',
+    'HOME',
+    'USER',
+    'USERNAME',
+    'SHELL',
+    'TERM',
+    'LANG',
+    'LC_ALL',
+    'TMP',
+    'TEMP',
+    'TMPDIR',
+    'PWD',
+    'OLDPWD',
+  ];
 
   constructor() {
     logger.info('TerminalManager initialized', {
@@ -44,19 +59,29 @@ export class TerminalManager {
   }
 
   createSession(name: string, cwd?: string): TerminalSession {
+    if (this.sessions.size >= TerminalManager.MAX_SESSIONS) {
+      logger.warn(`Max sessions limit reached: ${TerminalManager.MAX_SESSIONS}`, {
+        context: 'TerminalManager',
+        metadata: { maxSessions: TerminalManager.MAX_SESSIONS },
+      });
+      throw new Error(`Maximum terminal sessions limit (${TerminalManager.MAX_SESSIONS}) reached`);
+    }
+
     const sessionId = `terminal-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const workingDir = cwd || process.cwd();
 
     const shell = os.platform() === 'win32' ? 'powershell.exe' : 'bash';
+    const filteredEnv = this.filterEnvironmentVariables();
+
     const ptyProcess = pty.spawn(shell, [], {
       name: 'xterm-color',
       cols: 80,
       rows: 24,
       cwd: workingDir,
-      env: process.env as any,
+      env: filteredEnv,
     });
 
-    const session: TerminalSession = {
+    const session: TerminalSession & { ptyProcess?: pty.IPty; processId?: number } = {
       id: sessionId,
       name,
       cwd: workingDir,
@@ -82,6 +107,18 @@ export class TerminalManager {
     });
 
     return session;
+  }
+
+  private filterEnvironmentVariables(): Record<string, string | undefined> {
+    const filtered: Record<string, string | undefined> = {};
+    
+    for (const key of TerminalManager.SAFE_ENV_VARS) {
+      if (process.env[key] !== undefined) {
+        filtered[key] = process.env[key];
+      }
+    }
+    
+    return filtered;
   }
 
   executeCommand(request: TerminalCommandRequest): boolean {
@@ -147,29 +184,54 @@ export class TerminalManager {
 
   getAllSessions(): TerminalSession[] {
     return Array.from(this.sessions.values()).map(session => ({
-      ...session,
-      ptyProcess: undefined,
+      id: session.id,
+      name: session.name,
+      cwd: session.cwd,
+      createdAt: session.createdAt,
+      status: session.status,
     }));
   }
 
   registerOutputCallback(sessionId: string, callback: OutputCallback): void {
-    this.outputCallbacks.set(sessionId, callback);
+    if (!this.outputCallbacks.has(sessionId)) {
+      this.outputCallbacks.set(sessionId, new Set());
+    }
+    this.outputCallbacks.get(sessionId)!.add(callback);
   }
 
-  unregisterOutputCallback(sessionId: string): void {
-    this.outputCallbacks.delete(sessionId);
+  unregisterOutputCallback(sessionId: string, callback?: OutputCallback): void {
+    if (callback) {
+      const callbacks = this.outputCallbacks.get(sessionId);
+      if (callbacks) {
+        callbacks.delete(callback);
+        if (callbacks.size === 0) {
+          this.outputCallbacks.delete(sessionId);
+        }
+      }
+    } else {
+      this.outputCallbacks.delete(sessionId);
+    }
   }
 
   private emitOutput(sessionId: string, data: string, type: 'stdout' | 'stderr'): void {
-    const callback = this.outputCallbacks.get(sessionId);
-    if (callback) {
+    const callbacks = this.outputCallbacks.get(sessionId);
+    if (callbacks) {
       const output: TerminalOutput = {
         sessionId,
         data,
         timestamp: Date.now(),
         type,
       };
-      callback(output);
+      callbacks.forEach(callback => {
+        try {
+          callback(output);
+        } catch (error) {
+          logger.error(`Error in output callback: ${(error as Error).message}`, {
+            context: 'TerminalManager',
+            metadata: { sessionId, error: (error as Error).message },
+          });
+        }
+      });
     }
   }
 
