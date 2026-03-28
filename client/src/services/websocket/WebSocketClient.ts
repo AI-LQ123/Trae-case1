@@ -11,6 +11,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export interface WebSocketMessage {
   type: 'command' | 'event' | 'ping' | 'pong';
+  category?: string;
   id: string;
   timestamp: number;
   deviceId: string;
@@ -185,8 +186,11 @@ export class WebSocketClient {
     }
   }
 
-  public onMessage(type: string, handler: (msg: WebSocketMessage) => void): void {
+  public onMessage(type: string, handler: (msg: WebSocketMessage) => void): () => void {
     this.messageHandlers.set(type, handler);
+    return () => {
+      this.offMessage(type);
+    };
   }
 
   public offMessage(type: string): void {

@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useState } from 'react';
+import { useEffect, useCallback, useState, useRef } from 'react';
 import { useSelector } from 'react-redux';
 import { WebSocketClient, WebSocketMessage, WebSocketOptions } from '../services/websocket/WebSocketClient';
 import { RootState } from '../state/store';
@@ -10,7 +10,11 @@ interface UseWebSocketReturn {
   ping: () => void;
   connect: () => void;
   disconnect: () => void;
+  getClient: () => WebSocketClient;
 }
+
+// 存储全局客户端实例的引用
+const clientRef = useRef<WebSocketClient | null>(null);
 
 export const useWebSocket = (options: WebSocketOptions | string = 'ws://localhost:3001'): UseWebSocketReturn => {
   const { connected, reconnecting } = useSelector((state: RootState) => state.websocket);
@@ -18,7 +22,12 @@ export const useWebSocket = (options: WebSocketOptions | string = 'ws://localhos
   // 处理options参数，支持字符串URL或完整选项对象
   const clientOptions = typeof options === 'string' ? { url: options } : options;
   
-  const [client] = useState(() => new WebSocketClient(clientOptions));
+  const [client] = useState(() => {
+    if (!clientRef.current) {
+      clientRef.current = new WebSocketClient(clientOptions);
+    }
+    return clientRef.current;
+  });
 
   useEffect(() => {
     // 自动连接
@@ -47,6 +56,10 @@ export const useWebSocket = (options: WebSocketOptions | string = 'ws://localhos
     client.disconnect();
   }, [client]);
 
+  const getClient = useCallback(() => {
+    return client;
+  }, [client]);
+
   return {
     connected,
     reconnecting,
@@ -54,5 +67,11 @@ export const useWebSocket = (options: WebSocketOptions | string = 'ws://localhos
     ping,
     connect,
     disconnect,
+    getClient,
   };
+};
+
+// 静态方法，用于在其他地方获取客户端实例
+useWebSocket.getClient = () => {
+  return clientRef.current;
 };

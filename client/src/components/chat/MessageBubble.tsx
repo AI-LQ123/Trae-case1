@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 
 export interface MessageProps {
+  id: string;
   text: string;
   isUser: boolean;
   timestamp?: string;
