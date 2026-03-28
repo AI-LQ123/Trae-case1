@@ -178,7 +178,8 @@ export function createHttpErrorHandler() {
       body: filterSensitiveInfo(req.body)
     });
 
-    res.status(error instanceof AppError ? error.statusCode : 500).json(errorResponse);
+    const statusCode = error instanceof AppError ? error.statusCode : 500;
+    res.status(statusCode).json(errorResponse);
   };
 }
 
@@ -211,8 +212,9 @@ export function setupGlobalErrorHandlers() {
   // 未捕获的异常
   process.on('uncaughtException', (error) => {
     handleError(error, 'Global', { type: 'uncaughtException' });
-    // 可以选择退出进程
-    // process.exit(1);
+    // 记录致命错误后延迟退出，确保日志写入完成
+    logger.fatal('Uncaught exception, exiting...');
+    setTimeout(() => process.exit(1), 1000);
   });
 
   // 未处理的Promise拒绝

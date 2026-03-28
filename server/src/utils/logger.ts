@@ -13,7 +13,18 @@ interface LogOptions {
   stack?: string;
 }
 
-class Logger {
+export interface LoggerInterface {
+  debug(message: string, options?: LogOptions): void;
+  info(message: string, options?: LogOptions): void;
+  warn(message: string, options?: LogOptions): void;
+  error(message: string, options?: LogOptions): void;
+  fatal(message: string, options?: LogOptions): void;
+  setLevel(level: LogLevel): void;
+  getLevel(): LogLevel;
+  child(context: string): LoggerInterface;
+}
+
+class Logger implements LoggerInterface {
   private logLevel: LogLevel;
 
   constructor(level: LogLevel = LogLevel.INFO) {
@@ -40,14 +51,14 @@ class Logger {
       return;
     }
 
-    const timestamp = options.timestamp !== false ? this.getTimestamp() : new Date().toISOString();
+    const timestamp = options.timestamp === false ? undefined : this.getTimestamp();
     const context = options.context;
     const metadata = options.metadata;
     const stack = options.stack;
 
     // 输出JSON格式日志
     const logObject = {
-      timestamp,
+      ...(timestamp && { timestamp }),
       level: level.toUpperCase(),
       message,
       ...(context && { context }),
@@ -105,17 +116,35 @@ class Logger {
   }
 
   // 创建子logger，继承上下文
-  child(context: string): Logger {
-    const childLogger = new Logger(this.logLevel);
-    // 重写log方法，自动添加上下文
-    const originalLog = childLogger.log;
-    childLogger.log = (level, message, options = {}) => {
-      originalLog.call(childLogger, level, message, {
-        ...options,
-        context: options.context || context
-      });
+  child(context: string): LoggerInterface {
+    const parent = this;
+    
+    return {
+      debug: (message: string, options?: LogOptions) => {
+        parent.debug(message, { ...options, context: options?.context || context });
+      },
+      info: (message: string, options?: LogOptions) => {
+        parent.info(message, { ...options, context: options?.context || context });
+      },
+      warn: (message: string, options?: LogOptions) => {
+        parent.warn(message, { ...options, context: options?.context || context });
+      },
+      error: (message: string, options?: LogOptions) => {
+        parent.error(message, { ...options, context: options?.context || context });
+      },
+      fatal: (message: string, options?: LogOptions) => {
+        parent.fatal(message, { ...options, context: options?.context || context });
+      },
+      setLevel: (level: LogLevel) => {
+        parent.setLevel(level);
+      },
+      getLevel: () => {
+        return parent.getLevel();
+      },
+      child: (newContext: string) => {
+        return parent.child(`${context}:${newContext}`);
+      }
     };
-    return childLogger;
   }
 }
 
