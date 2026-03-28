@@ -52,7 +52,8 @@ describe('AIService', () => {
       },
     ];
 
-    const formattedPrompt = aiService.formatPrompt(message, context);
+    // 使用类型断言访问private方法
+    const formattedPrompt = (aiService as any).provider.formatPrompt(message, context);
     expect(formattedPrompt).toContain('user: Hello, AI!');
     expect(formattedPrompt).toContain('assistant: Hello! How can I help you today?');
     expect(formattedPrompt).toContain('User: What is the capital of France?');
@@ -157,41 +158,45 @@ describe('AIService', () => {
   });
 
   test('should retry on rate limit error', async () => {
-    // 模拟generateResponseWithOpenAI方法，让它在第一次调用时返回限流错误
-    const originalGenerateResponseWithOpenAI = (aiService as any).generateResponseWithOpenAI;
+    // 模拟provider的generateResponse方法，让它在第一次调用时返回限流错误
+    const originalProvider = (aiService as any).provider;
     let callCount = 0;
     
-    (aiService as any).generateResponseWithOpenAI = jest.fn(async () => {
-      callCount++;
-      if (callCount === 1) {
-        throw new AIError('RATE_LIMIT', 'Rate limit exceeded');
-      }
-      return 'OpenAI response after retry';
-    });
+    (aiService as any).provider = {
+      generateResponse: jest.fn(async () => {
+        callCount++;
+        if (callCount === 1) {
+          throw new AIError('RATE_LIMIT', 'Rate limit exceeded');
+        }
+        return 'AI response after retry';
+      }),
+    };
     
     // 调用generateResponse
     const response = await aiService.generateResponse('Hello, AI!');
     
     // 验证方法被调用了多次（至少两次）
-    expect((aiService as any).generateResponseWithOpenAI).toHaveBeenCalledTimes(2);
-    expect(response).toBe('OpenAI response after retry');
+    expect((aiService as any).provider.generateResponse).toHaveBeenCalledTimes(2);
+    expect(response).toBe('AI response after retry');
     
-    // 恢复原始方法
-    (aiService as any).generateResponseWithOpenAI = originalGenerateResponseWithOpenAI;
+    // 恢复原始provider
+    (aiService as any).provider = originalProvider;
   });
 
   test('should throw retry failed error after multiple attempts', async () => {
-    // 模拟generateResponseWithOpenAI方法，让它始终返回错误
-    const originalGenerateResponseWithOpenAI = (aiService as any).generateResponseWithOpenAI;
+    // 模拟provider的generateResponse方法，让它始终返回错误
+    const originalProvider = (aiService as any).provider;
     
-    (aiService as any).generateResponseWithOpenAI = jest.fn(async () => {
-      throw new AIError('RATE_LIMIT', 'Rate limit exceeded');
-    });
+    (aiService as any).provider = {
+      generateResponse: jest.fn(async () => {
+        throw new AIError('RATE_LIMIT', 'Rate limit exceeded');
+      }),
+    };
     
     // 调用generateResponse并验证它抛出了错误
     await expect(aiService.generateResponse('Hello, AI!')).rejects.toThrow();
     
-    // 恢复原始方法
-    (aiService as any).generateResponseWithOpenAI = originalGenerateResponseWithOpenAI;
+    // 恢复原始provider
+    (aiService as any).provider = originalProvider;
   });
 });

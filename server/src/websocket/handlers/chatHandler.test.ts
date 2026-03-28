@@ -100,7 +100,7 @@ describe('ChatHandler', () => {
     // 验证错误消息已发送
     expect(mockWebSocket.sentMessages).toHaveLength(1);
     expect(mockWebSocket.sentMessages[0].type).toBe('error');
-    expect(mockWebSocket.sentMessages[0].payload.message).toBe('sessionId is required for chat messages');
+    expect(mockWebSocket.sentMessages[0].payload.message).toBe('Missing or invalid sessionId in chat:send message');
   });
 
   test('should handle chat:history message', async () => {
@@ -269,5 +269,62 @@ describe('ChatHandler', () => {
 
     // 验证所有消息都已处理
     expect(mockWebSocket.sentMessages).toHaveLength(4); // 2个消息确认，2个AI响应
+  });
+
+  test('should handle invalid sessionId', async () => {
+    const chatMessage: ChatMessage = {
+      id: 'test-message-1',
+      role: 'user',
+      content: 'Hello, AI!',
+      timestamp: new Date().toISOString(),
+    };
+
+    // 测试缺少sessionId的情况
+    const messageWithoutSessionId: WebSocketMessage = {
+      type: 'chat:send',
+      id: 'test-msg-1',
+      timestamp: Date.now(),
+      deviceId: 'test-device',
+      payload: {
+        message: chatMessage,
+      },
+    };
+
+    // 处理消息
+    await chatHandler.handleChatMessage(messageWithoutSessionId);
+
+    // 验证错误消息已发送
+    expect(mockWebSocket.sentMessages).toHaveLength(1);
+    expect(mockWebSocket.sentMessages[0].type).toBe('error');
+    expect(mockWebSocket.sentMessages[0].payload.message).toBe('Missing or invalid sessionId in chat:send message');
+  });
+
+  test('should handle empty sessionId', async () => {
+    const chatMessage: ChatMessage = {
+      id: 'test-message-1',
+      role: 'user',
+      content: 'Hello, AI!',
+      timestamp: new Date().toISOString(),
+    };
+
+    // 测试空sessionId的情况
+    const messageWithEmptySessionId: WebSocketMessage = {
+      type: 'chat:send',
+      id: 'test-msg-1',
+      timestamp: Date.now(),
+      deviceId: 'test-device',
+      payload: {
+        sessionId: '',
+        message: chatMessage,
+      },
+    };
+
+    // 处理消息
+    await chatHandler.handleChatMessage(messageWithEmptySessionId);
+
+    // 验证错误消息已发送
+    expect(mockWebSocket.sentMessages).toHaveLength(1);
+    expect(mockWebSocket.sentMessages[0].type).toBe('error');
+    expect(mockWebSocket.sentMessages[0].payload.message).toBe('Missing or invalid sessionId in chat:send message');
   });
 });

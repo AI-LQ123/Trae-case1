@@ -194,10 +194,11 @@ export class ChatHandler {
       }
     }, ChatHandler.QUEUE_TIMEOUT);
 
+    const previous = this.messageQueue.get(sessionId) || Promise.resolve();
+    const current = previous.then(() => handler()).finally(() => clearTimeout(timeoutId));
+    this.messageQueue.set(sessionId, current);
+    
     try {
-      const previous = this.messageQueue.get(sessionId) || Promise.resolve();
-      const current = previous.then(() => handler()).finally(() => clearTimeout(timeoutId));
-      this.messageQueue.set(sessionId, current);
       await current;
     } finally {
       if (this.messageQueue.get(sessionId) === current) {
