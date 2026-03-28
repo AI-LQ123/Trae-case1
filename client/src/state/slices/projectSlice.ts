@@ -1,5 +1,44 @@
 import { createSlice, PayloadAction, createAsyncThunk } from '@reduxjs/toolkit';
 
+// API 基础 URL 配置
+const API_BASE_URL = 'http://localhost:3000/api';
+
+// 获取认证 token
+const getAuthToken = (): string | null => {
+  // 从 localStorage 或 Redux store 获取 token
+  return localStorage.getItem('auth_token');
+};
+
+// 通用的 fetch 包装器
+const fetchWithAuth = async (url: string, options: RequestInit = {}) => {
+  const token = getAuthToken();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...((options.headers as Record<string, string>) || {}),
+  };
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(url, {
+    ...options,
+    headers,
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+  }
+
+  const data = await response.json();
+  if (!data.success) {
+    throw new Error(data.error || 'Request failed');
+  }
+
+  return data;
+};
+
 export interface FileNode {
   id: string;
   name: string;
@@ -26,22 +65,22 @@ interface ProjectState {
   fileTree: FileNode | null;
   expandedNodes: Set<string>;
   selectedNodeId: string | null;
-  
+
   // 当前文件
   currentFile: FileNode | null;
   fileContent: string | null;
   fileLoading: boolean;
   fileError: string | null;
-  
+
   // 项目信息
   projectInfo: ProjectInfo | null;
   projectPath: string | null;
-  
+
   // 搜索
   searchQuery: string;
   searchResults: FileNode[];
   searchLoading: boolean;
-  
+
   // 加载状态
   loading: boolean;
   error: string | null;
@@ -67,15 +106,14 @@ const initialState: ProjectState = {
 // 异步 Thunks
 export const fetchFileTree = createAsyncThunk(
   'project/fetchFileTree',
-  async ({ projectPath, maxDepth = 3 }: { projectPath: string; maxDepth?: number }, { rejectWithValue }) => {
+  async (
+    { projectPath, maxDepth = 3 }: { projectPath: string; maxDepth?: number },
+    { rejectWithValue }
+  ) => {
     try {
-      // 这里应该调用API获取文件树
-      // 暂时返回模拟数据，实际实现时需要替换为真实API调用
-      const response = await fetch(`/api/project/file-tree?path=${encodeURIComponent(projectPath)}&maxDepth=${maxDepth}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch file tree');
-      }
-      const data = await response.json();
+      const data = await fetchWithAuth(
+        `${API_BASE_URL}/project/file-tree?path=${encodeURIComponent(projectPath)}&maxDepth=${maxDepth}`
+      );
       return data.data;
     } catch (error) {
       return rejectWithValue((error as Error).message);
@@ -87,11 +125,9 @@ export const fetchFileContent = createAsyncThunk(
   'project/fetchFileContent',
   async (filePath: string, { rejectWithValue }) => {
     try {
-      const response = await fetch(`/api/file/read?path=${encodeURIComponent(filePath)}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch file content');
-      }
-      const data = await response.json();
+      const data = await fetchWithAuth(
+        `${API_BASE_URL}/file/read?path=${encodeURIComponent(filePath)}`
+      );
       return data.data.content;
     } catch (error) {
       return rejectWithValue((error as Error).message);
@@ -101,15 +137,16 @@ export const fetchFileContent = createAsyncThunk(
 
 export const searchFiles = createAsyncThunk(
   'project/searchFiles',
-  async ({ projectPath, query }: { projectPath: string; query: string }, { rejectWithValue }) => {
+  async (
+    { projectPath, query, maxResults = 50 }: { projectPath: string; query: string; maxResults?: number },
+    { rejectWithValue }
+  ) => {
     try {
-      const response = await fetch(
-        `/api/project/search?path=${encodeURIComponent(projectPath)}&q=${encodeURIComponent(query)}`
+      const data = await fetchWithAuth(
+        `${API_BASE_URL}/project/search?path=${encodeURIComponent(projectPath)}&q=${encodeURIComponent(
+          query
+        )}&maxResults=${maxResults}`
       );
-      if (!response.ok) {
-        throw new Error('Failed to search files');
-      }
-      const data = await response.json();
       return data.data;
     } catch (error) {
       return rejectWithValue((error as Error).message);
@@ -121,11 +158,79 @@ export const fetchProjectInfo = createAsyncThunk(
   'project/fetchProjectInfo',
   async (projectPath: string, { rejectWithValue }) => {
     try {
-      const response = await fetch(`/api/project/info?path=${encodeURIComponent(projectPath)}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch project info');
-      }
-      const data = await response.json();
+      const data = await fetchWithAuth(
+        `${API_BASE_URL}/project/info?path=${encodeURIComponent(projectPath)}`
+      );
+      return data.data;
+    } catch (error) {
+      return rejectWithValue((error as Error).message);
+    }
+  }
+);
+
+// 文件操作 Thunks
+export const createFile = createAsyncThunk(
+  'project/createFile',
+  async (
+    { filePath, content = '' }: { filePath: string; content?: string },
+    { rejectWithValue }
+  ) => {
+    try {
+      const data = await fetchWithAuth(`${API_BASE_URL}/file/create`, {
+        method: 'POST',
+        body: JSON.stringify({ path: filePath, content }),
+      });
+      return data.data;
+    } catch (error) {
+      return rejectWithValue((error as Error).message);
+    }
+  }
+);
+
+export const deleteFile = createAsyncThunk(
+  'project/deleteFile',
+  async (filePath: string, { rejectWithValue }) => {
+    try {
+      const data = await fetchWithAuth(`${API_BASE_URL}/file/delete`, {
+        method: 'POST',
+        body: JSON.stringify({ path: filePath }),
+      });
+      return data.data;
+    } catch (error) {
+      return rejectWithValue((error as Error).message);
+    }
+  }
+);
+
+export const renameFile = createAsyncThunk(
+  'project/renameFile',
+  async (
+    { oldPath, newPath }: { oldPath: string; newPath: string },
+    { rejectWithValue }
+  ) => {
+    try {
+      const data = await fetchWithAuth(`${API_BASE_URL}/file/rename`, {
+        method: 'POST',
+        body: JSON.stringify({ oldPath, newPath }),
+      });
+      return data.data;
+    } catch (error) {
+      return rejectWithValue((error as Error).message);
+    }
+  }
+);
+
+export const writeFile = createAsyncThunk(
+  'project/writeFile',
+  async (
+    { filePath, content }: { filePath: string; content: string },
+    { rejectWithValue }
+  ) => {
+    try {
+      const data = await fetchWithAuth(`${API_BASE_URL}/file/write`, {
+        method: 'POST',
+        body: JSON.stringify({ path: filePath, content }),
+      });
       return data.data;
     } catch (error) {
       return rejectWithValue((error as Error).message);
@@ -140,7 +245,7 @@ const projectSlice = createSlice({
     setFileTree: (state, action: PayloadAction<FileNode | null>) => {
       state.fileTree = action.payload;
     },
-    
+
     toggleNode: (state, action: PayloadAction<string>) => {
       const nodeId = action.payload;
       if (state.expandedNodes.has(nodeId)) {
@@ -149,15 +254,15 @@ const projectSlice = createSlice({
         state.expandedNodes.add(nodeId);
       }
     },
-    
+
     expandNode: (state, action: PayloadAction<string>) => {
       state.expandedNodes.add(action.payload);
     },
-    
+
     collapseNode: (state, action: PayloadAction<string>) => {
       state.expandedNodes.delete(action.payload);
     },
-    
+
     expandAll: (state) => {
       const expandAllNodes = (node: FileNode) => {
         if (node.type === 'directory') {
@@ -169,15 +274,15 @@ const projectSlice = createSlice({
         expandAllNodes(state.fileTree);
       }
     },
-    
+
     collapseAll: (state) => {
       state.expandedNodes.clear();
     },
-    
+
     setSelectedNodeId: (state, action: PayloadAction<string | null>) => {
       state.selectedNodeId = action.payload;
     },
-    
+
     setCurrentFile: (state, action: PayloadAction<FileNode | null>) => {
       state.currentFile = action.payload;
       if (action.payload === null) {
@@ -185,44 +290,47 @@ const projectSlice = createSlice({
         state.fileError = null;
       }
     },
-    
+
     setFileContent: (state, action: PayloadAction<string | null>) => {
       state.fileContent = action.payload;
     },
-    
+
     setFileLoading: (state, action: PayloadAction<boolean>) => {
       state.fileLoading = action.payload;
     },
-    
+
     setFileError: (state, action: PayloadAction<string | null>) => {
       state.fileError = action.payload;
     },
-    
+
     setProjectInfo: (state, action: PayloadAction<ProjectInfo | null>) => {
       state.projectInfo = action.payload;
     },
-    
+
     setProjectPath: (state, action: PayloadAction<string | null>) => {
       state.projectPath = action.payload;
     },
-    
+
     setSearchQuery: (state, action: PayloadAction<string>) => {
       state.searchQuery = action.payload;
     },
-    
+
     setSearchResults: (state, action: PayloadAction<FileNode[]>) => {
       state.searchResults = action.payload;
     },
-    
+
     clearSearch: (state) => {
       state.searchQuery = '';
       state.searchResults = [];
       state.searchLoading = false;
     },
-    
-    updateFileNode: (state, action: PayloadAction<{ nodeId: string; updates: Partial<FileNode> }>) => {
+
+    updateFileNode: (
+      state,
+      action: PayloadAction<{ nodeId: string; updates: Partial<FileNode> }>
+    ) => {
       const { nodeId, updates } = action.payload;
-      
+
       const updateNode = (node: FileNode): boolean => {
         if (node.id === nodeId) {
           Object.assign(node, updates);
@@ -237,15 +345,18 @@ const projectSlice = createSlice({
         }
         return false;
       };
-      
+
       if (state.fileTree) {
         updateNode(state.fileTree);
       }
     },
-    
-    addFileNode: (state, action: PayloadAction<{ parentId: string; node: FileNode }>) => {
+
+    addFileNode: (
+      state,
+      action: PayloadAction<{ parentId: string; node: FileNode }>
+    ) => {
       const { parentId, node } = action.payload;
-      
+
       const addToParent = (parent: FileNode): boolean => {
         if (parent.id === parentId) {
           if (!parent.children) {
@@ -263,18 +374,18 @@ const projectSlice = createSlice({
         }
         return false;
       };
-      
+
       if (state.fileTree) {
         addToParent(state.fileTree);
       }
     },
-    
+
     removeFileNode: (state, action: PayloadAction<string>) => {
       const nodeId = action.payload;
-      
+
       const removeNode = (parent: FileNode): boolean => {
         if (parent.children) {
-          const index = parent.children.findIndex(child => child.id === nodeId);
+          const index = parent.children.findIndex((child) => child.id === nodeId);
           if (index !== -1) {
             parent.children.splice(index, 1);
             return true;
@@ -287,11 +398,11 @@ const projectSlice = createSlice({
         }
         return false;
       };
-      
+
       if (state.fileTree) {
         removeNode(state.fileTree);
       }
-      
+
       if (state.selectedNodeId === nodeId) {
         state.selectedNodeId = null;
       }
@@ -300,7 +411,7 @@ const projectSlice = createSlice({
         state.fileContent = null;
       }
     },
-    
+
     clearProject: () => {
       return initialState;
     },
@@ -319,7 +430,7 @@ const projectSlice = createSlice({
       state.loading = false;
       state.error = action.payload as string;
     });
-    
+
     // fetchFileContent
     builder.addCase(fetchFileContent.pending, (state) => {
       state.fileLoading = true;
@@ -333,7 +444,7 @@ const projectSlice = createSlice({
       state.fileLoading = false;
       state.fileError = action.payload as string;
     });
-    
+
     // searchFiles
     builder.addCase(searchFiles.pending, (state) => {
       state.searchLoading = true;
@@ -346,7 +457,7 @@ const projectSlice = createSlice({
       state.searchLoading = false;
       state.searchResults = [];
     });
-    
+
     // fetchProjectInfo
     builder.addCase(fetchProjectInfo.pending, (state) => {
       state.loading = true;
@@ -357,6 +468,54 @@ const projectSlice = createSlice({
     });
     builder.addCase(fetchProjectInfo.rejected, (state) => {
       state.loading = false;
+    });
+
+    // createFile
+    builder.addCase(createFile.pending, (state) => {
+      state.loading = true;
+    });
+    builder.addCase(createFile.fulfilled, (state) => {
+      state.loading = false;
+    });
+    builder.addCase(createFile.rejected, (state, action) => {
+      state.loading = false;
+      state.error = action.payload as string;
+    });
+
+    // deleteFile
+    builder.addCase(deleteFile.pending, (state) => {
+      state.loading = true;
+    });
+    builder.addCase(deleteFile.fulfilled, (state) => {
+      state.loading = false;
+    });
+    builder.addCase(deleteFile.rejected, (state, action) => {
+      state.loading = false;
+      state.error = action.payload as string;
+    });
+
+    // renameFile
+    builder.addCase(renameFile.pending, (state) => {
+      state.loading = true;
+    });
+    builder.addCase(renameFile.fulfilled, (state) => {
+      state.loading = false;
+    });
+    builder.addCase(renameFile.rejected, (state, action) => {
+      state.loading = false;
+      state.error = action.payload as string;
+    });
+
+    // writeFile
+    builder.addCase(writeFile.pending, (state) => {
+      state.fileLoading = true;
+    });
+    builder.addCase(writeFile.fulfilled, (state) => {
+      state.fileLoading = false;
+    });
+    builder.addCase(writeFile.rejected, (state, action) => {
+      state.fileLoading = false;
+      state.fileError = action.payload as string;
     });
   },
 });

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   Modal,
+  Alert,
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { FileTree } from '../components/file/FileTree';
@@ -20,264 +21,28 @@ import {
   clearSearch,
   expandAll,
   collapseAll,
+  fetchFileTree,
+  fetchFileContent,
+  searchFiles,
+  setFileTree,
+  setFileContent,
+  setFileLoading,
 } from '../state/slices/projectSlice';
 import { RootState } from '../state/store';
 import { Colors } from '../constants/colors';
 import { useWebSocket } from '../hooks/useWebSocket';
+import { WebSocketMessage } from '../services/websocket/WebSocketClient';
 
-// 模拟文件树数据
-const mockFileTree: FileNode = {
-  id: 'root',
-  name: '项目根目录',
-  path: '/project',
-  type: 'directory',
-  children: [
-    {
-      id: 'src',
-      name: 'src',
-      path: '/project/src',
-      type: 'directory',
-      children: [
-        {
-          id: 'components',
-          name: 'components',
-          path: '/project/src/components',
-          type: 'directory',
-          children: [
-            {
-              id: 'Button.tsx',
-              name: 'Button.tsx',
-              path: '/project/src/components/Button.tsx',
-              type: 'file',
-              size: 1200,
-              modifiedAt: Date.now(),
-            },
-            {
-              id: 'Input.tsx',
-              name: 'Input.tsx',
-              path: '/project/src/components/Input.tsx',
-              type: 'file',
-              size: 800,
-              modifiedAt: Date.now(),
-            },
-          ],
-        },
-        {
-          id: 'utils',
-          name: 'utils',
-          path: '/project/src/utils',
-          type: 'directory',
-          children: [
-            {
-              id: 'helpers.ts',
-              name: 'helpers.ts',
-              path: '/project/src/utils/helpers.ts',
-              type: 'file',
-              size: 500,
-              modifiedAt: Date.now(),
-            },
-          ],
-        },
-        {
-          id: 'App.tsx',
-          name: 'App.tsx',
-          path: '/project/src/App.tsx',
-          type: 'file',
-          size: 2500,
-          modifiedAt: Date.now(),
-        },
-      ],
-    },
-    {
-      id: 'package.json',
-      name: 'package.json',
-      path: '/project/package.json',
-      type: 'file',
-      size: 1500,
-      modifiedAt: Date.now(),
-    },
-    {
-      id: 'README.md',
-      name: 'README.md',
-      path: '/project/README.md',
-      type: 'file',
-      size: 2000,
-      modifiedAt: Date.now(),
-    },
-    {
-      id: '.gitignore',
-      name: '.gitignore',
-      path: '/project/.gitignore',
-      type: 'file',
-      size: 200,
-      modifiedAt: Date.now(),
-    },
-  ],
-};
+// API 基础 URL
+const API_BASE_URL = 'http://localhost:3000/api';
 
-// 模拟文件内容
-const mockFileContents: Record<string, string> = {
-  '/project/src/App.tsx': `import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { Button } from './components/Button';
-
-export const App: React.FC = () => {
-  return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Hello World</Text>
-      <Button title="Click me" onPress={() => console.log('Clicked')} />
-    </View>
-  );
-};
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-  },
-});`,
-  '/project/package.json': `{
-  "name": "my-project",
-  "version": "1.0.0",
-  "description": "A sample project",
-  "main": "index.js",
-  "scripts": {
-    "start": "node index.js",
-    "build": "tsc",
-    "test": "jest"
-  },
-  "dependencies": {
-    "react": "^18.0.0",
-    "react-native": "^0.70.0"
-  },
-  "devDependencies": {
-    "typescript": "^4.8.0",
-    "jest": "^29.0.0"
-  }
-}`,
-  '/project/README.md': `# My Project
-
-This is a sample project for demonstration purposes.
-
-## Installation
-
-\`\`\`bash
-npm install
-\`\`\`
-
-## Usage
-
-\`\`\`bash
-npm start
-\`\`\`
-
-## Features
-
-- Feature 1
-- Feature 2
-- Feature 3
-
-## License
-
-MIT`,
-  '/project/.gitignore': `node_modules/
-dist/
-.env
-*.log
-.DS_Store
-coverage/`,
-  '/project/src/components/Button.tsx': `import React from 'react';
-import { TouchableOpacity, Text, StyleSheet } from 'react-native';
-
-interface ButtonProps {
-  title: string;
-  onPress: () => void;
-  disabled?: boolean;
-}
-
-export const Button: React.FC<ButtonProps> = ({ title, onPress, disabled }) => {
-  return (
-    <TouchableOpacity
-      style={[styles.button, disabled && styles.disabled]}
-      onPress={onPress}
-      disabled={disabled}
-    >
-      <Text style={styles.text}>{title}</Text>
-    </TouchableOpacity>
-  );
-};
-
-const styles = StyleSheet.create({
-  button: {
-    backgroundColor: '#007AFF',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  disabled: {
-    backgroundColor: '#C7C7CC',
-  },
-  text: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-});`,
-  '/project/src/components/Input.tsx': `import React, { useState } from 'react';
-import { TextInput, StyleSheet } from 'react-native';
-
-interface InputProps {
-  placeholder?: string;
-  value: string;
-  onChangeText: (text: string) => void;
-}
-
-export const Input: React.FC<InputProps> = ({ placeholder, value, onChangeText }) => {
-  return (
-    <TextInput
-      style={styles.input}
-      placeholder={placeholder}
-      value={value}
-      onChangeText={onChangeText}
-    />
-  );
-};
-
-const styles = StyleSheet.create({
-  input: {
-    borderWidth: 1,
-    borderColor: '#E5E5EA',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    fontSize: 16,
-  },
-});`,
-  '/project/src/utils/helpers.ts': `export const formatDate = (date: Date): string => {
-  return date.toLocaleDateString('zh-CN');
-};
-
-export const debounce = <T extends (...args: any[]) => void>(
-  fn: T,
-  delay: number
-): ((...args: Parameters<T>) => void) => {
-  let timeoutId: ReturnType<typeof setTimeout>;
-  return (...args: Parameters<T>) => {
-    clearTimeout(timeoutId);
-    timeoutId = setTimeout(() => fn(...args), delay);
-  };
-};`,
-};
+// 项目路径配置
+const PROJECT_PATH = '/project';
 
 export const ProjectScreen: React.FC = () => {
   const dispatch = useDispatch();
-  const { connected } = useWebSocket();
-  
+  const { connected, send, getClient } = useWebSocket();
+
   const {
     fileTree,
     expandedNodes,
@@ -286,71 +51,202 @@ export const ProjectScreen: React.FC = () => {
     fileContent,
     fileLoading,
     searchQuery,
+    searchResults,
     searchLoading,
+    loading,
+    error,
   } = useSelector((state: RootState) => state.project);
 
   const [showSearch, setShowSearch] = useState(false);
   const [showViewer, setShowViewer] = useState(false);
   const [localSearchQuery, setLocalSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [projectPath, setProjectPath] = useState(PROJECT_PATH);
+
+  // 加载文件树
+  const loadFileTree = useCallback(async () => {
+    if (!connected) {
+      Alert.alert('提示', '未连接到服务器，请先连接');
+      return;
+    }
+
+    setRefreshing(true);
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/project/file-tree?path=${encodeURIComponent(projectPath)}&maxDepth=3`,
+        {
+          headers: {
+            'Authorization': `Bearer ${getClient?.() || ''}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (data.success) {
+        dispatch(setFileTree(data.data));
+      } else {
+        throw new Error(data.error || 'Failed to load file tree');
+      }
+    } catch (error) {
+      console.error('Failed to load file tree:', error);
+      Alert.alert('错误', '加载文件树失败，请检查网络连接');
+    } finally {
+      setRefreshing(false);
+    }
+  }, [connected, projectPath, dispatch, getClient]);
 
   // 初始化文件树
   useEffect(() => {
-    if (!fileTree) {
-      dispatch({ type: 'project/setFileTree', payload: mockFileTree });
+    if (connected && !fileTree) {
+      loadFileTree();
     }
-  }, [dispatch, fileTree]);
+  }, [connected, fileTree, loadFileTree]);
+
+  // 监听 WebSocket 文件变更事件
+  useEffect(() => {
+    if (!connected) return;
+
+    const client = getClient?.();
+    if (!client) return;
+
+    const unsubscribe = client.onMessage('event', (message: WebSocketMessage) => {
+      if (message.payload?.category === 'file_change') {
+        // 文件发生变化，刷新文件树
+        loadFileTree();
+      }
+    });
+
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
+  }, [connected, getClient, loadFileTree]);
 
   const handleToggleNode = useCallback((nodeId: string) => {
     dispatch(toggleNode(nodeId));
   }, [dispatch]);
 
-  const handleSelectNode = useCallback((node: FileNode) => {
+  const handleSelectNode = useCallback(async (node: FileNode) => {
     dispatch(setSelectedNodeId(node.id));
-    
+
     if (node.type === 'file') {
       dispatch(setCurrentFile(node));
       setShowViewer(true);
-      
-      // 模拟加载文件内容
-      dispatch({ type: 'project/setFileLoading', payload: true });
-      setTimeout(() => {
-        const content = mockFileContents[node.path] || `// 文件内容: ${node.name}\n// 路径: ${node.path}\n\n// 这是一个示例文件内容。\n// 在实际应用中，这里会显示从服务器获取的真实文件内容。`;
-        dispatch({ type: 'project/setFileContent', payload: content });
-        dispatch({ type: 'project/setFileLoading', payload: false });
-      }, 500);
+
+      // 加载真实文件内容
+      dispatch(setFileLoading(true));
+      try {
+        const response = await fetch(
+          `${API_BASE_URL}/file/read?path=${encodeURIComponent(node.path)}`,
+          {
+            headers: {
+              'Authorization': `Bearer ${getClient?.() || ''}`,
+            },
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        if (data.success) {
+          dispatch(setFileContent(data.data.content));
+        } else {
+          throw new Error(data.error || 'Failed to load file content');
+        }
+      } catch (error) {
+        console.error('Failed to load file content:', error);
+        dispatch(setFileContent(`// 加载文件失败: ${node.name}\n// 错误: ${(error as Error).message}`));
+        Alert.alert('错误', '加载文件内容失败');
+      } finally {
+        dispatch(setFileLoading(false));
+      }
     }
-  }, [dispatch]);
+  }, [dispatch, getClient]);
 
   const handleCloseViewer = useCallback(() => {
     setShowViewer(false);
     dispatch(setCurrentFile(null));
   }, [dispatch]);
 
-  const handleRefreshFile = useCallback(() => {
-    if (currentFile) {
-      dispatch({ type: 'project/setFileLoading', payload: true });
-      setTimeout(() => {
-        const content = mockFileContents[currentFile.path] || `// 文件内容: ${currentFile.name}\n// 路径: ${currentFile.path}`;
-        dispatch({ type: 'project/setFileContent', payload: content });
-        dispatch({ type: 'project/setFileLoading', payload: false });
-      }, 500);
+  const handleRefreshFile = useCallback(async () => {
+    if (!currentFile) return;
+
+    dispatch(setFileLoading(true));
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/file/read?path=${encodeURIComponent(currentFile.path)}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${getClient?.() || ''}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (data.success) {
+        dispatch(setFileContent(data.data.content));
+      } else {
+        throw new Error(data.error || 'Failed to refresh file content');
+      }
+    } catch (error) {
+      console.error('Failed to refresh file content:', error);
+      Alert.alert('错误', '刷新文件内容失败');
+    } finally {
+      dispatch(setFileLoading(false));
     }
-  }, [currentFile, dispatch]);
+  }, [currentFile, dispatch, getClient]);
 
   const handleRefreshTree = useCallback(() => {
-    setRefreshing(true);
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 1000);
-  }, []);
+    loadFileTree();
+  }, [loadFileTree]);
 
-  const handleSearch = useCallback(() => {
-    if (localSearchQuery.trim()) {
-      dispatch(setSearchQuery(localSearchQuery.trim()));
-      // 实际应用中这里会调用搜索API
+  const handleSearch = useCallback(async () => {
+    if (!localSearchQuery.trim()) return;
+
+    if (!connected) {
+      Alert.alert('提示', '未连接到服务器，请先连接');
+      return;
     }
-  }, [dispatch, localSearchQuery]);
+
+    dispatch(setSearchQuery(localSearchQuery.trim()));
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/project/search?path=${encodeURIComponent(projectPath)}&q=${encodeURIComponent(localSearchQuery.trim())}&maxResults=50`,
+        {
+          headers: {
+            'Authorization': `Bearer ${getClient?.() || ''}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (data.success) {
+        // 搜索结果处理
+        console.log('Search results:', data.data);
+      } else {
+        throw new Error(data.error || 'Search failed');
+      }
+    } catch (error) {
+      console.error('Search failed:', error);
+      Alert.alert('错误', '搜索失败');
+    }
+  }, [localSearchQuery, connected, projectPath, dispatch, getClient]);
 
   const handleClearSearch = useCallback(() => {
     setLocalSearchQuery('');
@@ -364,6 +260,16 @@ export const ProjectScreen: React.FC = () => {
   const handleCollapseAll = useCallback(() => {
     dispatch(collapseAll());
   }, [dispatch]);
+
+  // 使用 useMemo 优化格式化消息
+  const formattedSearchResults = useMemo(() => {
+    return searchResults.map(node => ({
+      id: node.id,
+      name: node.name,
+      path: node.path,
+      type: node.type,
+    }));
+  }, [searchResults]);
 
   return (
     <View style={styles.container}>
@@ -388,8 +294,11 @@ export const ProjectScreen: React.FC = () => {
           <TouchableOpacity
             style={styles.headerButton}
             onPress={handleRefreshTree}
+            disabled={!connected || refreshing}
           >
-            <Text style={styles.headerButtonText}>🔄</Text>
+            <Text style={[styles.headerButtonText, (!connected || refreshing) && styles.disabledText]}>
+              {refreshing ? '⏳' : '🔄'}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -406,6 +315,7 @@ export const ProjectScreen: React.FC = () => {
               onChangeText={setLocalSearchQuery}
               onSubmitEditing={handleSearch}
               returnKeyType="search"
+              editable={connected}
             />
             {localSearchQuery.length > 0 && (
               <TouchableOpacity onPress={handleClearSearch}>
@@ -413,7 +323,11 @@ export const ProjectScreen: React.FC = () => {
               </TouchableOpacity>
             )}
           </View>
-          <TouchableOpacity style={styles.searchButton} onPress={handleSearch}>
+          <TouchableOpacity
+            style={[styles.searchButton, !connected && styles.disabledButton]}
+            onPress={handleSearch}
+            disabled={!connected}
+          >
             <Text style={styles.searchButtonText}>搜索</Text>
           </TouchableOpacity>
         </View>
@@ -433,9 +347,28 @@ export const ProjectScreen: React.FC = () => {
       {searchQuery && (
         <View style={styles.searchResultsContainer}>
           <Text style={styles.searchResultsText}>
-            搜索结果: "{searchQuery}"
+            搜索结果: "{searchQuery}" ({formattedSearchResults.length})
           </Text>
           {searchLoading && <ActivityIndicator size="small" color={Colors.primary} />}
+        </View>
+      )}
+
+      {/* 加载状态 */}
+      {loading && (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>加载中...</Text>
+        </View>
+      )}
+
+      {/* 错误状态 */}
+      {error && (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorIcon}>⚠️</Text>
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={handleRefreshTree}>
+            <Text style={styles.retryButtonText}>重试</Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -526,6 +459,9 @@ const styles = StyleSheet.create({
   headerButtonText: {
     fontSize: 18,
   },
+  disabledText: {
+    opacity: 0.5,
+  },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -565,6 +501,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 8,
+  },
+  disabledButton: {
+    backgroundColor: Colors.light.textSecondary,
+    opacity: 0.5,
   },
   searchButtonText: {
     color: '#FFFFFF',
@@ -606,6 +546,41 @@ const styles = StyleSheet.create({
   searchResultsText: {
     fontSize: 14,
     color: Colors.light.textSecondary,
+  },
+  loadingContainer: {
+    paddingVertical: 20,
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 8,
+    fontSize: 14,
+    color: Colors.light.textSecondary,
+  },
+  errorContainer: {
+    padding: 16,
+    alignItems: 'center',
+    backgroundColor: Colors.light.background,
+  },
+  errorIcon: {
+    fontSize: 32,
+    marginBottom: 8,
+  },
+  errorText: {
+    fontSize: 14,
+    color: Colors.danger,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  retryButton: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
   },
   fileTreeContainer: {
     flex: 1,
