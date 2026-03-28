@@ -7,6 +7,7 @@ import {
   setError,
 } from '../../state/slices/websocketSlice';
 import { ReconnectionManager } from './reconnection';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export interface WebSocketMessage {
   type: 'command' | 'event' | 'ping' | 'pong';
@@ -16,18 +17,31 @@ export interface WebSocketMessage {
   payload: Record<string, unknown>;
 }
 
+export interface WebSocketOptions {
+  url: string;
+  authToken?: string;
+  deviceId?: string;
+  reconnectAttempts?: number;
+  baseReconnectDelay?: number;
+  maxReconnectDelay?: number;
+}
+
 export class WebSocketClient {
   private ws: WebSocket | null = null;
   private url: string;
+  private authToken?: string;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   private pongTimeout: ReturnType<typeof setTimeout> | null = null;
   private deviceId: string;
   private reconnectionManager: ReconnectionManager;
   private messageHandlers: Map<string, (msg: WebSocketMessage) => void> = new Map();
 
-  constructor(url: string) {
-    this.url = url;
-    this.deviceId = this.generateDeviceId();
+  constructor(options: WebSocketOptions) {
+    this.url = options.url;
+    this.authToken = options.authToken;
+    this.deviceId = options.deviceId || this.generateDeviceId();
+    // 异步存储deviceId
+    this.storeDeviceId(this.deviceId);
     this.reconnectionManager = new ReconnectionManager(
       () => this.connect(),
       () => store.dispatch(setReconnecting(true)),
@@ -36,8 +50,23 @@ export class WebSocketClient {
   }
 
   public connect(): void {
+    // 防止重复连接
+    if (this.ws?.readyState === WebSocket.OPEN || 
+        this.ws?.readyState === WebSocket.CONNECTING) {
+      console.log('Already connected or connecting');
+      return;
+    }
+
     try {
-      this.ws = new WebSocket(this.url);
+      // 处理认证Token
+      let connectUrl = this.url;
+      if (this.authToken) {
+        // 如果URL已经有查询参数，使用&，否则使用?
+        const separator = connectUrl.includes('?') ? '&' : '?';
+        connectUrl += `${separator}token=${encodeURIComponent(this.authToken)}`;
+      }
+
+      this.ws = new WebSocket(connectUrl);
 
       this.ws.onopen = () => {
         console.log('WebSocket connected');
@@ -168,9 +197,20 @@ export class WebSocketClient {
     return `mobile-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }
 
+  private async storeDeviceId(deviceId: string): Promise<void> {
+    try {
+      // 存储deviceId到AsyncStorage
+      await AsyncStorage.setItem('websocket_device_id', deviceId);
+    } catch (error) {
+      console.error('Failed to store deviceId:', error);
+    }
+  }
+
+
+
   private generateMessageId(): string {
     return `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }
 }
 
-export const wsClient = new WebSocketClient('ws://localhost:3001');
+// 移除全局单例，改为在Hook中创建实例或使用工厂方法

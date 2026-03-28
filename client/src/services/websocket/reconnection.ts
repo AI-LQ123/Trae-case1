@@ -12,6 +12,12 @@ export class ReconnectionManager {
   ) {}
 
   public scheduleReconnect(): void {
+    // 防止重复调度
+    if (this.reconnectTimer) {
+      console.log('Reconnect already scheduled');
+      return;
+    }
+
     if (this.reconnectAttempt >= this.maxReconnectAttempts) {
       this.onReconnectFailed();
       return;

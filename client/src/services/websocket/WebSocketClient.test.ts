@@ -63,7 +63,7 @@ describe('WebSocketClient', () => {
   let client: WebSocketClient;
 
   beforeEach(() => {
-    client = new WebSocketClient('ws://localhost:3001');
+    client = new WebSocketClient({ url: 'ws://localhost:3001' });
     jest.clearAllMocks();
   });
 
@@ -74,6 +74,13 @@ describe('WebSocketClient', () => {
   test('should connect successfully', () => {
     client.connect();
     // Should dispatch connected event
+  });
+
+  test('should not connect if already connected', () => {
+    client.connect();
+    // Call connect again
+    client.connect();
+    // Should not create new connection
   });
 
   test('should send message when connected', () => {
@@ -112,10 +119,12 @@ describe('WebSocketClient', () => {
   test('should schedule reconnect on close', () => {
     client.connect();
     // Simulate close
+    // @ts-ignore - accessing private property for testing
+    client.ws?.close();
     // Should schedule reconnect
   });
 
-  test('should handle error', () => {
+  test('should handle connection error', () => {
     // Mock WebSocket to throw error
     (global as any).WebSocket = class MockWebSocketError {
       constructor() {
@@ -123,7 +132,7 @@ describe('WebSocketClient', () => {
       }
     };
 
-    const errorClient = new WebSocketClient('ws://localhost:3001');
+    const errorClient = new WebSocketClient({ url: 'ws://localhost:3001' });
     errorClient.connect();
     // Should handle error and schedule reconnect
   });
@@ -184,5 +193,15 @@ describe('WebSocketClient', () => {
     client.connect();
     // Wait for ping to be sent and pong timeout to trigger
     // Should close connection and reconnect
+  });
+
+  test('should not schedule reconnect if already scheduled', () => {
+    client.connect();
+    // @ts-ignore - accessing private method for testing
+    client.scheduleReconnect();
+    // Call again
+    // @ts-ignore - accessing private method for testing
+    client.scheduleReconnect();
+    // Should only schedule once
   });
 });

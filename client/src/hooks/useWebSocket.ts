@@ -1,6 +1,6 @@
 import { useEffect, useCallback, useState } from 'react';
 import { useSelector } from 'react-redux';
-import { wsClient, WebSocketMessage } from '../services/websocket/WebSocketClient';
+import { WebSocketClient, WebSocketMessage, WebSocketOptions } from '../services/websocket/WebSocketClient';
 import { RootState } from '../state/store';
 
 interface UseWebSocketReturn {
@@ -12,9 +12,13 @@ interface UseWebSocketReturn {
   disconnect: () => void;
 }
 
-export const useWebSocket = (): UseWebSocketReturn => {
+export const useWebSocket = (options: WebSocketOptions | string = 'ws://localhost:3001'): UseWebSocketReturn => {
   const { connected, reconnecting } = useSelector((state: RootState) => state.websocket);
-  const [client] = useState(() => wsClient);
+  
+  // 处理options参数，支持字符串URL或完整选项对象
+  const clientOptions = typeof options === 'string' ? { url: options } : options;
+  
+  const [client] = useState(() => new WebSocketClient(clientOptions));
 
   useEffect(() => {
     // 自动连接
