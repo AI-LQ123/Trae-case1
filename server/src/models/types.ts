@@ -11,6 +11,7 @@ export interface WebSocketMessage {
 export type MessagePayload =
   | CommandPayload
   | EventPayload
+  | AuthPayload
   | PingPayload
   | PongPayload;
 
@@ -22,6 +23,11 @@ export interface CommandPayload {
 
 export interface EventPayload {
   category: string;
+  data: Record<string, unknown>;
+}
+
+export interface AuthPayload {
+  action: 'generate_pairing_code' | 'pair' | 'authenticate';
   data: Record<string, unknown>;
 }
 
