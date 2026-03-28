@@ -1,4 +1,4 @@
-import { WebSocketClient } from './WebSocketClient';
+import { WebSocketClient, WebSocketMessage } from './WebSocketClient';
 
 // Mock WebSocket
 class MockWebSocket {
@@ -45,10 +45,18 @@ jest.mock('../../state/store', () => ({
 jest.mock('../../state/slices/websocketSlice', () => ({
   setConnected: jest.fn(),
   setReconnecting: jest.fn(),
-  incrementReconnectAttempt: jest.fn(),
   setLastPingTime: jest.fn(),
   setLatency: jest.fn(),
   setError: jest.fn(),
+}));
+
+// Mock ReconnectionManager
+jest.mock('./reconnection', () => ({
+  ReconnectionManager: jest.fn().mockImplementation(() => ({
+    scheduleReconnect: jest.fn(),
+    reset: jest.fn(),
+    cancel: jest.fn(),
+  })),
 }));
 
 describe('WebSocketClient', () => {
@@ -86,6 +94,21 @@ describe('WebSocketClient', () => {
     // Should send ping message
   });
 
+  test('should handle pong message and clear timeout', () => {
+    client.connect();
+    // Simulate pong message
+    const pongMessage: WebSocketMessage = {
+      type: 'pong',
+      id: 'pong-1',
+      timestamp: Date.now(),
+      deviceId: 'test-device',
+      payload: {},
+    };
+    // @ts-ignore - accessing private method for testing
+    client.handleMessage(JSON.stringify(pongMessage));
+    // Should clear pong timeout and update latency
+  });
+
   test('should schedule reconnect on close', () => {
     client.connect();
     // Simulate close
@@ -105,9 +128,61 @@ describe('WebSocketClient', () => {
     // Should handle error and schedule reconnect
   });
 
+  test('should handle message parsing error', () => {
+    client.connect();
+    // @ts-ignore - accessing private method for testing
+    client.handleMessage('invalid json');
+    // Should dispatch error
+  });
+
+  test('should register and call message handler', () => {
+    client.connect();
+    const handler = jest.fn();
+    client.onMessage('command', handler);
+    
+    const commandMessage: WebSocketMessage = {
+      type: 'command',
+      id: 'cmd-1',
+      timestamp: Date.now(),
+      deviceId: 'test-device',
+      payload: { action: 'test' },
+    };
+    
+    // @ts-ignore - accessing private method for testing
+    client.handleMessage(JSON.stringify(commandMessage));
+    
+    expect(handler).toHaveBeenCalledWith(commandMessage);
+  });
+
+  test('should unregister message handler', () => {
+    client.connect();
+    const handler = jest.fn();
+    client.onMessage('command', handler);
+    client.offMessage('command');
+    
+    const commandMessage: WebSocketMessage = {
+      type: 'command',
+      id: 'cmd-1',
+      timestamp: Date.now(),
+      deviceId: 'test-device',
+      payload: { action: 'test' },
+    };
+    
+    // @ts-ignore - accessing private method for testing
+    client.handleMessage(JSON.stringify(commandMessage));
+    
+    expect(handler).not.toHaveBeenCalled();
+  });
+
   test('should disconnect properly', () => {
     client.connect();
     client.disconnect();
     // Should close connection and clear timers
+  });
+
+  test('should handle pong timeout', () => {
+    client.connect();
+    // Wait for ping to be sent and pong timeout to trigger
+    // Should close connection and reconnect
   });
 });

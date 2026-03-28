@@ -2,11 +2,11 @@ import { store } from '../../state/store';
 import {
   setConnected,
   setReconnecting,
-  incrementReconnectAttempt,
   setLastPingTime,
   setLatency,
   setError,
 } from '../../state/slices/websocketSlice';
+import { ReconnectionManager } from './reconnection';
 
 export interface WebSocketMessage {
   type: 'command' | 'event' | 'ping' | 'pong';
@@ -19,17 +19,20 @@ export interface WebSocketMessage {
 export class WebSocketClient {
   private ws: WebSocket | null = null;
   private url: string;
-  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
-  private reconnectAttempt = 0;
-  private maxReconnectAttempts = 10;
-  private baseDelay = 1000;
-  private maxDelay = 30000;
+  private pongTimeout: ReturnType<typeof setTimeout> | null = null;
   private deviceId: string;
+  private reconnectionManager: ReconnectionManager;
+  private messageHandlers: Map<string, (msg: WebSocketMessage) => void> = new Map();
 
   constructor(url: string) {
     this.url = url;
     this.deviceId = this.generateDeviceId();
+    this.reconnectionManager = new ReconnectionManager(
+      () => this.connect(),
+      () => store.dispatch(setReconnecting(true)),
+      () => store.dispatch(setError('已达到最大重连次数'))
+    );
   }
 
   public connect(): void {
@@ -40,7 +43,7 @@ export class WebSocketClient {
         console.log('WebSocket connected');
         store.dispatch(setConnected(true));
         store.dispatch(setReconnecting(false));
-        this.reconnectAttempt = 0;
+        this.reconnectionManager.reset();
         this.startPing();
       };
 
@@ -71,15 +74,27 @@ export class WebSocketClient {
       const message: WebSocketMessage = JSON.parse(data);
 
       if (message.type === 'pong') {
+        // 收到pong，清除超时定时器
+        if (this.pongTimeout) {
+          clearTimeout(this.pongTimeout);
+          this.pongTimeout = null;
+        }
         const latency = Date.now() - message.timestamp;
         store.dispatch(setLastPingTime(Date.now()));
         store.dispatch(setLatency(latency));
         return;
       }
 
-      console.log('Received message:', message);
+      // 分发消息到对应的处理器
+      const handler = this.messageHandlers.get(message.type);
+      if (handler) {
+        handler(message);
+      } else {
+        console.log('Received message:', message);
+      }
     } catch (error) {
       console.error('Failed to parse message:', error);
+      store.dispatch(setError('消息解析错误'));
     }
   }
 
@@ -92,6 +107,7 @@ export class WebSocketClient {
       this.ws.send(JSON.stringify(fullMessage));
     } else {
       console.warn('WebSocket is not connected');
+      store.dispatch(setError('连接未建立，无法发送消息'));
     }
   }
 
@@ -102,6 +118,12 @@ export class WebSocketClient {
       timestamp: Date.now(),
       payload: {},
     });
+    
+    // 设置pong超时检测
+    this.pongTimeout = setTimeout(() => {
+      console.warn('Pong timeout, reconnecting...');
+      this.ws?.close(); // 触发重连
+    }, 5000); // 5秒超时
   }
 
   private startPing(): void {
@@ -115,40 +137,31 @@ export class WebSocketClient {
       clearInterval(this.pingTimer);
       this.pingTimer = null;
     }
+    if (this.pongTimeout) {
+      clearTimeout(this.pongTimeout);
+      this.pongTimeout = null;
+    }
   }
 
   private scheduleReconnect(): void {
-    if (this.reconnectAttempt >= this.maxReconnectAttempts) {
-      store.dispatch(setError('已达到最大重连次数'));
-      return;
-    }
-
-    store.dispatch(setReconnecting(true));
-    store.dispatch(incrementReconnectAttempt());
-    this.reconnectAttempt++;
-
-    const delay = Math.min(
-      this.baseDelay * Math.pow(2, this.reconnectAttempt),
-      this.maxDelay
-    );
-
-    console.log(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempt})`);
-
-    this.reconnectTimer = setTimeout(() => {
-      this.connect();
-    }, delay);
+    this.reconnectionManager.scheduleReconnect();
   }
 
   public disconnect(): void {
     this.stopPing();
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
+    this.reconnectionManager.cancel();
     if (this.ws) {
       this.ws.close();
       this.ws = null;
     }
+  }
+
+  public onMessage(type: string, handler: (msg: WebSocketMessage) => void): void {
+    this.messageHandlers.set(type, handler);
+  }
+
+  public offMessage(type: string): void {
+    this.messageHandlers.delete(type);
   }
 
   private generateDeviceId(): string {

@@ -22,7 +22,8 @@ export const useWebSocket = (): UseWebSocketReturn => {
 
     // 清理函数
     return () => {
-      // 组件卸载时不自动断开，保持连接
+      // 组件卸载时断开连接，防止内存泄漏
+      client.disconnect();
     };
   }, [client]);
 

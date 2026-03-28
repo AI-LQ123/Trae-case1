@@ -3,7 +3,6 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 interface WebSocketState {
   connected: boolean;
   reconnecting: boolean;
-  reconnectAttempt: number;
   lastPingTime: number;
   latency: number;
   error: string | null;
@@ -12,7 +11,6 @@ interface WebSocketState {
 const initialState: WebSocketState = {
   connected: false,
   reconnecting: false,
-  reconnectAttempt: 0,
   lastPingTime: 0,
   latency: 0,
   error: null,
@@ -26,14 +24,10 @@ const websocketSlice = createSlice({
       state.connected = action.payload;
       if (action.payload) {
         state.error = null;
-        state.reconnectAttempt = 0;
       }
     },
     setReconnecting: (state, action: PayloadAction<boolean>) => {
       state.reconnecting = action.payload;
-    },
-    incrementReconnectAttempt: state => {
-      state.reconnectAttempt += 1;
     },
     setLastPingTime: (state, action: PayloadAction<number>) => {
       state.lastPingTime = action.payload;
@@ -53,7 +47,6 @@ const websocketSlice = createSlice({
 export const {
   setConnected,
   setReconnecting,
-  incrementReconnectAttempt,
   setLastPingTime,
   setLatency,
   setError,
