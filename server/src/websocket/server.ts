@@ -6,6 +6,8 @@ import { MessageRouter } from './messageRouter';
 import { WebSocketServerConfig, ConnectionStatus } from './types';
 import { AuthHandler } from './handlers/authHandler';
 import { ChatMessageHandler } from './handlers/chatMessageHandler';
+import { TaskHandler } from './handlers/taskHandler';
+import { TerminalHandler } from './handlers/terminalHandler';
 import { logger } from '../utils/logger';
 
 export class WebSocketServer {
@@ -44,6 +46,8 @@ export class WebSocketServer {
     this.registerAuthHandler();
     // Register chat handler
     this.registerChatHandler();
+    // Register task handler
+    this.registerTaskHandler();
 
     this.setupWebSocketServer();
     this.startHeartbeat();
@@ -63,6 +67,22 @@ export class WebSocketServer {
     this.messageRouter.registerHandler('chat:history', '', chatHandler);
     this.messageRouter.registerHandler('chat:clear', '', chatHandler);
     logger.info('Chat handlers registered', {
+      context: 'WebSocketServer',
+    });
+  }
+
+  private registerTaskHandler(): void {
+    const taskHandler = new TaskHandler(this.connectionManager);
+    this.messageRouter.registerCommandHandler('task', taskHandler);
+    logger.info('Task handler registered', {
+      context: 'WebSocketServer',
+    });
+  }
+
+  private registerTerminalHandler(): void {
+    const terminalHandler = new TerminalHandler(this.connectionManager);
+    this.messageRouter.registerCommandHandler('terminal', terminalHandler);
+    logger.info('Terminal handler registered', {
       context: 'WebSocketServer',
     });
   }
