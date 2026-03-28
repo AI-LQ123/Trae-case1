@@ -69,3 +69,30 @@ export interface Connection {
   isAuthenticated: boolean;
   clientIp?: string;
 }
+
+export interface FileInfo {
+  name: string;
+  path: string;
+  size: number;
+  mtime: number;
+  isFile: true;
+  isDirectory: false;
+}
+
+export interface DirectoryInfo {
+  name: string;
+  path: string;
+  isFile: false;
+  isDirectory: true;
+  children?: FileSystemItem[];
+}
+
+export type FileSystemItem = FileInfo | DirectoryInfo;
+
+export interface ProjectInfo {
+  name: string;
+  path: string;
+  type: string;
+  files: number;
+  directories: number;
+}

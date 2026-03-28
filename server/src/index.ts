@@ -5,7 +5,9 @@ import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import pairingService from './services/auth/pairing';
 import tokenManager from './services/auth/tokenManager';
-import { authMiddleware } from './middleware/authMiddleware';
+import { authMiddleware, AuthenticatedRequest } from './middleware/authMiddleware';
+import projectRoutes from './api/routes/project';
+import fileRoutes from './api/routes/file';
 
 const app = express();
 const server = createServer(app);
@@ -125,7 +127,7 @@ app.post('/api/auth/refresh', (req, res) => {
   });
 });
 
-app.get('/api/auth/validate', authMiddleware, (req, res) => {
+app.get('/api/auth/validate', authMiddleware, (req: AuthenticatedRequest, res) => {
   res.json({
     success: true,
     data: { valid: true, user: req.user }
@@ -152,6 +154,10 @@ app.post('/api/auth/logout', authMiddleware, (req, res) => {
     data: { message: 'Logged out successfully' }
   });
 });
+
+// Project and File API routes
+app.use('/api/project', projectRoutes);
+app.use('/api/file', fileRoutes);
 
 const wss = new WebSocketServer(server);
 

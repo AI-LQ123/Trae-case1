@@ -1,12 +1,9 @@
 import { NextFunction, Request, Response } from 'express';
 import tokenManager from '../services/auth/tokenManager';
+import { TokenPayload } from '../services/auth/tokenManager';
 
-interface AuthenticatedRequest extends Request {
-  user?: {
-    deviceId: string;
-    userId: string;
-    role: string;
-  };
+export interface AuthenticatedRequest extends Request {
+  user?: TokenPayload;
 }
 
 interface ApiResponse {
@@ -74,7 +71,7 @@ export const authMiddlewareWithRoles = (requiredRoles: string[]) => {
   };
 };
 
-export const websocketAuthMiddleware = (token: string) => {
+export const websocketAuthMiddleware = (token: string): TokenPayload | null => {
   return tokenManager.verifyToken(token);
 };
 

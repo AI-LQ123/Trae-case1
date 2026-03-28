@@ -1,12 +1,12 @@
 import jwt from 'jsonwebtoken';
 
-interface TokenPayload {
+export interface TokenPayload {
   deviceId: string;
   userId: string;
   role: string;
 }
 
-interface RefreshTokenPayload {
+export interface RefreshTokenPayload {
   deviceId: string;
   userId: string;
   jti: string;
@@ -18,8 +18,8 @@ class TokenManager {
   private revokedTokens: Set<string> = new Set();
 
   constructor() {
-    this.secretKey = process.env.JWT_SECRET;
-    this.refreshSecretKey = process.env.JWT_REFRESH_SECRET;
+    this.secretKey = process.env.JWT_SECRET as string;
+    this.refreshSecretKey = process.env.JWT_REFRESH_SECRET as string;
     
     if (!this.secretKey || !this.refreshSecretKey) {
       throw new Error('JWT_SECRET and JWT_REFRESH_SECRET environment variables are required');
