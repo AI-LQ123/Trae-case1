@@ -1,0 +1,31 @@
+{
+  "name": "trae-mobile",
+  "version": "1.0.0",
+  "description": "Trae手机端APP - 远程控制电脑端Trae",
+  "private": true,
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && npm run android",
+    "build:server": "cd server && npm run build",
+    "test:server": "cd server && npm test",
+    "test:client": "cd client && npm test",
+    "lint": "eslint . --ext .ts,.tsx",
+    "lint:fix": "eslint . --ext .ts,.tsx --fix",
+    "format": "prettier --write \"**/*.{ts,tsx,json,md}\"",
+    "postinstall": "cd server && npm install && cd ../client && npm install"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
