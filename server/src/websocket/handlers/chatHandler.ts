@@ -1,7 +1,8 @@
 import { WebSocket } from 'ws';
 import { ChatMessage, WebSocketMessage } from '../../models/types';
 import { chatStore } from '../../store/chatStore';
-import { aiService, AIError } from '../../services/aiService';
+import { aiService } from '../../services/aiService';
+import { AIError } from '../../services/aiProvider';
 
 // 定义payload类型
 interface ChatPayload {

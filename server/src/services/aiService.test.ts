@@ -1,4 +1,5 @@
-import { AIService, AIError } from './aiService';
+import { AIService } from './aiService';
+import { AIError } from './aiProvider';
 import { ChatMessage } from '../models/types';
 
 // 模拟AbortController
