@@ -10,13 +10,24 @@ router.get('/read', authMiddleware, async (req, res) => {
     const filePath = req.query.path as string;
     
     if (!filePath) {
-      return res.status(400).json({ error: 'File path is required' });
+      return res.status(400).json({ 
+        success: false, 
+        error: 'File path is required',
+        code: 400 
+      });
     }
 
     const content = await fileService.readFile(filePath);
-    res.json({ content });
+    res.json({ 
+      success: true, 
+      data: { content } 
+    });
   } catch (error) {
-    res.status(500).json({ error: (error as Error).message });
+    res.status(500).json({ 
+      success: false, 
+      error: (error as Error).message,
+      code: 500 
+    });
   }
 });
 
@@ -26,13 +37,24 @@ router.post('/write', authMiddleware, async (req, res) => {
     const { path: filePath, content } = req.body;
     
     if (!filePath || content === undefined) {
-      return res.status(400).json({ error: 'File path and content are required' });
+      return res.status(400).json({ 
+        success: false, 
+        error: 'File path and content are required',
+        code: 400 
+      });
     }
 
     await fileService.writeFile(filePath, content);
-    res.json({ success: true });
+    res.json({ 
+      success: true,
+      data: { message: 'File written successfully' }
+    });
   } catch (error) {
-    res.status(500).json({ error: (error as Error).message });
+    res.status(500).json({ 
+      success: false, 
+      error: (error as Error).message,
+      code: 500 
+    });
   }
 });
 
@@ -42,13 +64,24 @@ router.delete('/delete', authMiddleware, async (req, res) => {
     const filePath = req.query.path as string;
     
     if (!filePath) {
-      return res.status(400).json({ error: 'File path is required' });
+      return res.status(400).json({ 
+        success: false, 
+        error: 'File path is required',
+        code: 400 
+      });
     }
 
     await fileService.deleteFile(filePath);
-    res.json({ success: true });
+    res.json({ 
+      success: true,
+      data: { message: 'File deleted successfully' }
+    });
   } catch (error) {
-    res.status(500).json({ error: (error as Error).message });
+    res.status(500).json({ 
+      success: false, 
+      error: (error as Error).message,
+      code: 500 
+    });
   }
 });
 
@@ -58,13 +91,24 @@ router.get('/list', authMiddleware, async (req, res) => {
     const directoryPath = req.query.path as string;
     
     if (!directoryPath) {
-      return res.status(400).json({ error: 'Directory path is required' });
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Directory path is required',
+        code: 400 
+      });
     }
 
     const items = await fileService.listDirectory(directoryPath);
-    res.json(items);
+    res.json({ 
+      success: true, 
+      data: items 
+    });
   } catch (error) {
-    res.status(500).json({ error: (error as Error).message });
+    res.status(500).json({ 
+      success: false, 
+      error: (error as Error).message,
+      code: 500 
+    });
   }
 });
 
