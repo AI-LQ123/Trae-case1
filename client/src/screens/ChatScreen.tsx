@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { MessageList } from '../components/chat/MessageList';
@@ -6,6 +6,7 @@ import { MessageProps } from '../components/chat/MessageBubble';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { addMessage, updateMessage, setLoading, setStreamingMessageId } from '../state/slices/chatSlice';
 import { RootState } from '../state/store';
+import { store } from '../state/store';
 
 // 使用更可靠的ID生成方法
 const generateId = (): string => {
@@ -18,16 +19,18 @@ export const ChatScreen: React.FC = () => {
   const { messages, loading, streamingMessageId } = useSelector((state: RootState) => state.chat);
   const [inputText, setInputText] = useState('');
   const [inputHeight, setInputHeight] = useState(40);
+  const streamingMessageIdRef = useRef<string | null>(null);
 
+  // 处理消息监听
   useEffect(() => {
     connect();
 
     const unsubscribe = useWebSocket.getClient()?.onMessage('event', (msg: any) => {
       if (msg.type === 'event' && msg.category === 'chat') {
         if (msg.payload?.content) {
-          if (msg.payload.isStreaming && streamingMessageId) {
+          if (msg.payload.isStreaming && streamingMessageIdRef.current) {
             // 流式消息增量更新
-            dispatch(updateMessage({ id: streamingMessageId, content: msg.payload.content as string }));
+            dispatch(updateMessage({ id: streamingMessageIdRef.current, content: msg.payload.content as string }));
           } else {
             // 完整消息
             dispatch(addMessage({
@@ -41,10 +44,15 @@ export const ChatScreen: React.FC = () => {
           }
         } else if (msg.payload?.streaming) {
           if (msg.payload.isStreaming) {
-            dispatch(setStreamingMessageId(msg.id));
+            // 流式开始，使用服务端返回的ID或生成新ID
+            const streamId = msg.id || generateId();
+            streamingMessageIdRef.current = streamId;
+            dispatch(setStreamingMessageId(streamId));
           } else {
+            // 流式结束
+            streamingMessageIdRef.current = null;
             dispatch(setStreamingMessageId(null));
-            // 流式结束，清除loading状态
+            // 清除loading状态
             dispatch(setLoading(false));
           }
         }
@@ -56,7 +64,12 @@ export const ChatScreen: React.FC = () => {
         unsubscribe();
       }
     };
-  }, [connect, dispatch, streamingMessageId]);
+  }, [connect, dispatch]);
+
+  // 同步streamingMessageId到ref
+  useEffect(() => {
+    streamingMessageIdRef.current = streamingMessageId;
+  }, [streamingMessageId]);
 
   // 使用useCallback优化handleSend
   const handleSend = useCallback(() => {
@@ -89,8 +102,9 @@ export const ChatScreen: React.FC = () => {
 
       // 设置发送超时处理
       setTimeout(() => {
-        const currentLoading = useSelector((state: RootState) => state.chat.loading);
-        if (currentLoading) {
+        // 使用store.getState()获取当前状态，避免在回调中使用useSelector
+        const currentState = store.getState();
+        if (currentState.chat.loading) {
           dispatch(setLoading(false));
           Alert.alert('发送超时', '消息发送可能失败，请检查网络连接');
         }
