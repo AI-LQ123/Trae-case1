@@ -1,10 +1,9 @@
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Modal,
   Alert,
   StyleSheet,
-  ActivityIndicator,
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { FileTree } from '../components/file/FileTree';
@@ -37,7 +36,7 @@ const PROJECT_PATH = '/project';
 
 export const ProjectScreen: React.FC = () => {
   const dispatch = useDispatch();
-  const { connected, send, getClient } = useWebSocket();
+  const { connected, getClient } = useWebSocket();
 
   const {
     fileTree,
@@ -57,7 +56,7 @@ export const ProjectScreen: React.FC = () => {
   const [showViewer, setShowViewer] = useState(false);
   const [localSearchQuery, setLocalSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
-  const [projectPath, setProjectPath] = useState(PROJECT_PATH);
+  const [projectPath] = useState(PROJECT_PATH);
   const [showSearchResults, setShowSearchResults] = useState(false);
 
   // 加载文件树

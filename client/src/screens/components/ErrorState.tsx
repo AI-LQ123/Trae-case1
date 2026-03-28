@@ -6,9 +6,10 @@ import {
   StyleSheet,
 } from 'react-native';
 import { Colors } from '../../constants/colors';
+import { ErrorDetails, formatErrorForDisplay } from '../../utils/errorHandler';
 
 interface ErrorStateProps {
-  error: string;
+  error: ErrorDetails | string | null;
   onRetry: () => void;
 }
 
@@ -16,10 +17,16 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
   error,
   onRetry,
 }) => {
+  const displayMessage = error 
+    ? typeof error === 'string' 
+      ? error 
+      : formatErrorForDisplay(error)
+    : '发生未知错误';
+
   return (
     <View style={styles.errorContainer}>
       <Text style={styles.errorIcon}>⚠️</Text>
-      <Text style={styles.errorText}>{error}</Text>
+      <Text style={styles.errorText}>{displayMessage}</Text>
       <TouchableOpacity style={styles.retryButton} onPress={onRetry}>
         <Text style={styles.retryButtonText}>重试</Text>
       </TouchableOpacity>

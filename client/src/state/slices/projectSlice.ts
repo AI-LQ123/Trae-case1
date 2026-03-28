@@ -1,8 +1,10 @@
 import { createSlice, PayloadAction, createAsyncThunk } from '@reduxjs/toolkit';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getEnvConfig } from '../../constants/config';
+import { handleFetchError, ErrorDetails } from '../../utils/errorHandler';
 
-// 从环境变量获取API基础URL
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:3000/api';
+// 从配置获取API基础URL
+const { API_BASE_URL } = getEnvConfig();
 
 // 获取认证 token
 const getAuthToken = async (): Promise<string | null> => {
@@ -17,7 +19,12 @@ const getAuthToken = async (): Promise<string | null> => {
 };
 
 // 通用的请求包装器，支持重试和超时
-const fetchWithAuth = async (url: string, options: RequestInit = {}, retries = 3, timeout = 30000) => {
+const fetchWithAuth = async <T = unknown>(
+  url: string,
+  options: RequestInit = {},
+  retries = 3,
+  timeout = 30000
+): Promise<{ success: boolean; data: T; error?: string }> => {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
 
@@ -101,7 +108,7 @@ interface ProjectState {
   currentFile: FileNode | null;
   fileContent: string | null;
   fileLoading: boolean;
-  fileError: string | null;
+  fileError: ErrorDetails | null;
 
   // 项目信息
   projectInfo: ProjectInfo | null;
@@ -114,7 +121,7 @@ interface ProjectState {
 
   // 加载状态
   loading: boolean;
-  error: string | null;
+  error: ErrorDetails | null;
 }
 
 const initialState: ProjectState = {
@@ -135,75 +142,99 @@ const initialState: ProjectState = {
 };
 
 // 异步 Thunks
-export const fetchFileTree = createAsyncThunk(
+export const fetchFileTree = createAsyncThunk<
+  FileNode | null,
+  { projectPath: string; maxDepth?: number },
+  { rejectValue: ErrorDetails }
+>(
   'project/fetchFileTree',
   async (
-    { projectPath, maxDepth = 3 }: { projectPath: string; maxDepth?: number },
+    { projectPath, maxDepth = 3 },
     { rejectWithValue }
   ) => {
     try {
-      const data = await fetchWithAuth(
+      const data = await fetchWithAuth<FileNode | null>(
         `${API_BASE_URL}/project/file-tree?path=${encodeURIComponent(projectPath)}&maxDepth=${maxDepth}`
       );
       return data.data;
     } catch (error) {
-      return rejectWithValue((error as Error).message);
+      const errorDetails = handleFetchError(error);
+      return rejectWithValue(errorDetails);
     }
   }
 );
 
-export const fetchFileContent = createAsyncThunk(
+export const fetchFileContent = createAsyncThunk<
+  string,
+  string,
+  { rejectValue: ErrorDetails }
+>(
   'project/fetchFileContent',
-  async (filePath: string, { rejectWithValue }) => {
+  async (filePath, { rejectWithValue }) => {
     try {
-      const data = await fetchWithAuth(
+      const data = await fetchWithAuth<{ content: string }>(
         `${API_BASE_URL}/file/read?path=${encodeURIComponent(filePath)}`
       );
       return data.data.content;
     } catch (error) {
-      return rejectWithValue((error as Error).message);
+      const errorDetails = handleFetchError(error);
+      return rejectWithValue(errorDetails);
     }
   }
 );
 
-export const searchFiles = createAsyncThunk(
+export const searchFiles = createAsyncThunk<
+  FileNode[],
+  { projectPath: string; query: string; maxResults?: number },
+  { rejectValue: ErrorDetails }
+>(
   'project/searchFiles',
   async (
-    { projectPath, query, maxResults = 50 }: { projectPath: string; query: string; maxResults?: number },
+    { projectPath, query, maxResults = 50 },
     { rejectWithValue }
   ) => {
     try {
-      const data = await fetchWithAuth(
+      const data = await fetchWithAuth<FileNode[]>(
         `${API_BASE_URL}/project/search?path=${encodeURIComponent(projectPath)}&q=${encodeURIComponent(
           query
         )}&maxResults=${maxResults}`
       );
       return data.data;
     } catch (error) {
-      return rejectWithValue((error as Error).message);
+      const errorDetails = handleFetchError(error);
+      return rejectWithValue(errorDetails);
     }
   }
 );
 
-export const fetchProjectInfo = createAsyncThunk(
+export const fetchProjectInfo = createAsyncThunk<
+  ProjectInfo | null,
+  string,
+  { rejectValue: ErrorDetails }
+>(
   'project/fetchProjectInfo',
-  async (projectPath: string, { rejectWithValue }) => {
+  async (projectPath, { rejectWithValue }) => {
     try {
-      const data = await fetchWithAuth(
+      const data = await fetchWithAuth<ProjectInfo>(
         `${API_BASE_URL}/project/info?path=${encodeURIComponent(projectPath)}`
       );
       return data.data;
     } catch (error) {
-      return rejectWithValue((error as Error).message);
+      const errorDetails = handleFetchError(error);
+      return rejectWithValue(errorDetails);
     }
   }
 );
 
 // 文件操作 Thunks
-export const createFile = createAsyncThunk(
+export const createFile = createAsyncThunk<
+  unknown,
+  { filePath: string; content?: string },
+  { rejectValue: ErrorDetails }
+>(
   'project/createFile',
   async (
-    { filePath, content = '' }: { filePath: string; content?: string },
+    { filePath, content = '' },
     { rejectWithValue }
   ) => {
     try {
@@ -213,14 +244,19 @@ export const createFile = createAsyncThunk(
       });
       return data.data;
     } catch (error) {
-      return rejectWithValue((error as Error).message);
+      const errorDetails = handleFetchError(error);
+      return rejectWithValue(errorDetails);
     }
   }
 );
 
-export const deleteFile = createAsyncThunk(
+export const deleteFile = createAsyncThunk<
+  unknown,
+  string,
+  { rejectValue: ErrorDetails }
+>(
   'project/deleteFile',
-  async (filePath: string, { rejectWithValue }) => {
+  async (filePath, { rejectWithValue }) => {
     try {
       const data = await fetchWithAuth(`${API_BASE_URL}/file/delete`, {
         method: 'POST',
@@ -228,15 +264,20 @@ export const deleteFile = createAsyncThunk(
       });
       return data.data;
     } catch (error) {
-      return rejectWithValue((error as Error).message);
+      const errorDetails = handleFetchError(error);
+      return rejectWithValue(errorDetails);
     }
   }
 );
 
-export const renameFile = createAsyncThunk(
+export const renameFile = createAsyncThunk<
+  unknown,
+  { oldPath: string; newPath: string },
+  { rejectValue: ErrorDetails }
+>(
   'project/renameFile',
   async (
-    { oldPath, newPath }: { oldPath: string; newPath: string },
+    { oldPath, newPath },
     { rejectWithValue }
   ) => {
     try {
@@ -246,15 +287,20 @@ export const renameFile = createAsyncThunk(
       });
       return data.data;
     } catch (error) {
-      return rejectWithValue((error as Error).message);
+      const errorDetails = handleFetchError(error);
+      return rejectWithValue(errorDetails);
     }
   }
 );
 
-export const writeFile = createAsyncThunk(
+export const writeFile = createAsyncThunk<
+  unknown,
+  { filePath: string; content: string },
+  { rejectValue: ErrorDetails }
+>(
   'project/writeFile',
   async (
-    { filePath, content }: { filePath: string; content: string },
+    { filePath, content },
     { rejectWithValue }
   ) => {
     try {
@@ -264,7 +310,8 @@ export const writeFile = createAsyncThunk(
       });
       return data.data;
     } catch (error) {
-      return rejectWithValue((error as Error).message);
+      const errorDetails = handleFetchError(error);
+      return rejectWithValue(errorDetails);
     }
   }
 );
@@ -330,7 +377,7 @@ const projectSlice = createSlice({
       state.fileLoading = action.payload;
     },
 
-    setFileError: (state, action: PayloadAction<string | null>) => {
+    setFileError: (state, action: PayloadAction<ErrorDetails | null>) => {
       state.fileError = action.payload;
     },
 
@@ -459,7 +506,7 @@ const projectSlice = createSlice({
     });
     builder.addCase(fetchFileTree.rejected, (state, action) => {
       state.loading = false;
-      state.error = action.payload as string;
+      state.error = action.payload as ErrorDetails;
     });
 
     // fetchFileContent
@@ -473,7 +520,7 @@ const projectSlice = createSlice({
     });
     builder.addCase(fetchFileContent.rejected, (state, action) => {
       state.fileLoading = false;
-      state.fileError = action.payload as string;
+      state.fileError = action.payload as ErrorDetails;
     });
 
     // searchFiles
@@ -510,7 +557,7 @@ const projectSlice = createSlice({
     });
     builder.addCase(createFile.rejected, (state, action) => {
       state.loading = false;
-      state.error = action.payload as string;
+      state.error = action.payload as ErrorDetails;
     });
 
     // deleteFile
@@ -522,7 +569,7 @@ const projectSlice = createSlice({
     });
     builder.addCase(deleteFile.rejected, (state, action) => {
       state.loading = false;
-      state.error = action.payload as string;
+      state.error = action.payload as ErrorDetails;
     });
 
     // renameFile
@@ -534,7 +581,7 @@ const projectSlice = createSlice({
     });
     builder.addCase(renameFile.rejected, (state, action) => {
       state.loading = false;
-      state.error = action.payload as string;
+      state.error = action.payload as ErrorDetails;
     });
 
     // writeFile
@@ -546,7 +593,7 @@ const projectSlice = createSlice({
     });
     builder.addCase(writeFile.rejected, (state, action) => {
       state.fileLoading = false;
-      state.fileError = action.payload as string;
+      state.fileError = action.payload as ErrorDetails;
     });
   },
 });

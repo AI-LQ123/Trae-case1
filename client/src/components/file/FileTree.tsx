@@ -593,9 +593,8 @@ export const FileTree: React.FC<FileTreeListProps> = memo(({
       maxToRenderPerBatch={10}
       windowSize={5}
       removeClippedSubviews={true}
-      maxToRenderPerBatch={10}
       updateCellsBatchingPeriod={100}
-      getItemLayout={({ index }) => ({
+      getItemLayout={(_data, index) => ({
         length: 50, // 估计行高
         offset: 50 * index,
         index,

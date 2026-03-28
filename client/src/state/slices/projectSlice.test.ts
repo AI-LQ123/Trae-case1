@@ -24,6 +24,13 @@ import projectReducer, {
   clearProject,
 } from './projectSlice';
 
+// 模拟ErrorDetails
+const mockErrorDetails = {
+  code: 'TEST_ERROR',
+  message: 'Test error message',
+  timestamp: Date.now(),
+};
+
 // 启用 Immer 的 MapSet 插件
 enableMapSet();
 
@@ -156,7 +163,7 @@ describe('projectSlice', () => {
         ...initialState,
         currentFile: { id: 'test', name: 'test', path: '/test', type: 'file' } as FileNode,
         fileContent: 'some content',
-        fileError: 'some error',
+        fileError: mockErrorDetails,
       };
       const nextState = projectReducer(state, setCurrentFile(null));
       expect(nextState.currentFile).toBeNull();
@@ -176,9 +183,8 @@ describe('projectSlice', () => {
     });
 
     it('should handle setFileError', () => {
-      const error = 'File not found';
-      const nextState = projectReducer(initialState, setFileError(error));
-      expect(nextState.fileError).toBe(error);
+      const nextState = projectReducer(initialState, setFileError(mockErrorDetails));
+      expect(nextState.fileError).toEqual(mockErrorDetails);
     });
   });
 

@@ -1,7 +1,9 @@
-import { useEffect, useCallback, useState, useRef } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { useSelector } from 'react-redux';
 import { WebSocketClient, WebSocketMessage, WebSocketOptions } from '../services/websocket/WebSocketClient';
 import { RootState } from '../state/store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getEnvConfig } from '../constants/config';
 
 interface UseWebSocketReturn {
   connected: boolean;
@@ -10,58 +12,71 @@ interface UseWebSocketReturn {
   ping: () => void;
   connect: () => void;
   disconnect: () => void;
-  getClient: () => WebSocketClient;
+  getClient: () => WebSocketClient | null;
 }
 
-// 存储全局客户端实例的引用
-const clientRef = useRef<WebSocketClient | null>(null);
+// 存储全局客户端实例的引用（不使用useRef，因为useRef不能在组件外部使用）
+let globalClient: WebSocketClient | null = null;
 
-// 从环境变量获取WebSocket基础URL
-const WS_BASE_URL = process.env.EXPO_PUBLIC_WS_BASE_URL || 'ws://localhost:3001';
+// 从配置获取WebSocket基础URL
+const { WS_BASE_URL } = getEnvConfig();
 
 export const useWebSocket = (options: WebSocketOptions | string = WS_BASE_URL): UseWebSocketReturn => {
   const { connected, reconnecting } = useSelector((state: RootState) => state.websocket);
+  const clientRef = useRef<WebSocketClient | null>(null);
   
   // 处理options参数，支持字符串URL或完整选项对象
   const clientOptions = typeof options === 'string' ? { url: options } : options;
   
-  const [client] = useState(() => {
-    if (!clientRef.current) {
-      clientRef.current = new WebSocketClient(clientOptions);
-    }
-    return clientRef.current;
-  });
-
+  // 在组件内初始化客户端实例
   useEffect(() => {
-    // 自动连接
-    client.connect();
-
-    // 清理函数
-    return () => {
-      // 组件卸载时断开连接，防止内存泄漏
-      client.disconnect();
+    const initClient = async () => {
+      if (!clientRef.current) {
+        // 获取认证token
+        let authToken = clientOptions.authToken;
+        if (!authToken) {
+          try {
+            authToken = await AsyncStorage.getItem('auth_token') || undefined;
+          } catch (error) {
+            console.error('Error getting auth token:', error);
+          }
+        }
+        
+        // 创建客户端实例，合并选项
+        const finalOptions = {
+          ...clientOptions,
+          authToken: authToken || clientOptions.authToken,
+        };
+        
+        if (!globalClient) {
+          globalClient = new WebSocketClient(finalOptions);
+        }
+        clientRef.current = globalClient;
+      }
     };
-  }, [client]);
+    
+    initClient();
+  }, [clientOptions]);
 
   const send = useCallback((message: Omit<WebSocketMessage, 'deviceId'>) => {
-    client.send(message);
-  }, [client]);
+    clientRef.current?.send(message);
+  }, []);
 
   const ping = useCallback(() => {
-    client.ping();
-  }, [client]);
+    clientRef.current?.ping();
+  }, []);
 
   const connect = useCallback(() => {
-    client.connect();
-  }, [client]);
+    clientRef.current?.connect();
+  }, []);
 
   const disconnect = useCallback(() => {
-    client.disconnect();
-  }, [client]);
+    clientRef.current?.disconnect();
+  }, []);
 
   const getClient = useCallback(() => {
-    return client;
-  }, [client]);
+    return clientRef.current;
+  }, []);
 
   return {
     connected,
@@ -76,5 +91,5 @@ export const useWebSocket = (options: WebSocketOptions | string = WS_BASE_URL): 
 
 // 静态方法，用于在其他地方获取客户端实例
 useWebSocket.getClient = () => {
-  return clientRef.current;
+  return globalClient;
 };

@@ -1,31 +1,44 @@
-export const Config = {
-  APP_NAME: 'Trae Mobile',
-  APP_VERSION: '1.0.0',
+import { Alert } from 'react-native';
 
-  WEBSOCKET: {
-    RECONNECT_BASE_DELAY: 1000,
-    RECONNECT_MAX_DELAY: 30000,
-    MAX_RECONNECT_ATTEMPTS: 10,
-    PING_INTERVAL: 30000,
-    CONNECTION_TIMEOUT: 60000,
-  },
+export interface EnvConfig {
+  API_BASE_URL: string;
+  WS_BASE_URL: string;
+}
 
-  STORAGE: {
-    PREFIX: 'trae_mobile_',
-    MAX_CHAT_HISTORY: 500,
-    MAX_TERMINAL_LINES: 10000,
-    MAX_FILE_CACHE_SIZE: 100 * 1024 * 1024,
-  },
+const defaultConfig: EnvConfig = {
+  API_BASE_URL: 'http://localhost:3000/api',
+  WS_BASE_URL: 'ws://localhost:3001',
+};
 
-  API: {
-    DEFAULT_PORT: 3001,
-    TIMEOUT: 30000,
-  },
+export const getEnvConfig = (): EnvConfig => {
+  return {
+    API_BASE_URL: process.env.EXPO_PUBLIC_API_BASE_URL || defaultConfig.API_BASE_URL,
+    WS_BASE_URL: process.env.EXPO_PUBLIC_WS_BASE_URL || defaultConfig.WS_BASE_URL,
+  };
+};
 
-  UI: {
-    MESSAGE_BUBBLE_MAX_WIDTH: 0.75,
-    TERMINAL_FONT_SIZE: 12,
-    CODE_FONT_SIZE: 14,
-    FILE_TREE_INDENT: 16,
-  },
+export const validateEnvConfig = (): boolean => {
+  const config = getEnvConfig();
+  let isValid = true;
+
+  if (!config.API_BASE_URL) {
+    console.warn('API_BASE_URL is not configured');
+    isValid = false;
+  }
+
+  if (!config.WS_BASE_URL) {
+    console.warn('WS_BASE_URL is not configured');
+    isValid = false;
+  }
+
+  return isValid;
+};
+
+export const showConfigAlert = () => {
+  const config = getEnvConfig();
+  Alert.alert(
+    '环境配置',
+    `当前配置:\nAPI_BASE_URL: ${config.API_BASE_URL}\nWS_BASE_URL: ${config.WS_BASE_URL}\n\n如需修改，请编辑 .env 文件`,
+    [{ text: '确定' }]
+  );
 };
