@@ -1,11 +1,13 @@
-import React, { useCallback, memo } from 'react';
+import React, { useCallback, memo, useState } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   FlatList,
   StyleSheet,
-  ActivityIndicator,
+  Alert,
+  Modal,
+  TextInput,
 } from 'react-native';
 import { FileNode } from '../../state/slices/projectSlice';
 import { Colors } from '../../constants/colors';
@@ -17,6 +19,10 @@ interface FileTreeProps {
   onToggleNode: (nodeId: string) => void;
   onSelectNode: (node: FileNode) => void;
   level?: number;
+  onRename?: (node: FileNode, newName: string) => void;
+  onDelete?: (node: FileNode) => void;
+  onCreateFile?: (parent: FileNode, fileName: string) => void;
+  onCreateDirectory?: (parent: FileNode, dirName: string) => void;
 }
 
 // 文件图标映射
@@ -73,6 +79,231 @@ const SkeletonItem: React.FC<{ level?: number }> = ({ level = 0 }) => (
   </View>
 );
 
+// 操作菜单组件
+interface ActionMenuProps {
+  visible: boolean;
+  node: FileNode | null;
+  onClose: () => void;
+  onRename: (node: FileNode) => void;
+  onDelete: (node: FileNode) => void;
+  onCreateFile: (node: FileNode) => void;
+  onCreateDirectory: (node: FileNode) => void;
+}
+
+const ActionMenu: React.FC<ActionMenuProps> = ({
+  visible,
+  node,
+  onClose,
+  onRename,
+  onDelete,
+  onCreateFile,
+  onCreateDirectory,
+}) => {
+  if (!node) return null;
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <TouchableOpacity
+        style={styles.modalOverlay}
+        activeOpacity={1}
+        onPress={onClose}
+      >
+        <View style={styles.menuContainer}>
+          <Text style={styles.menuTitle}>{node.name}</Text>
+          <View style={styles.menuDivider} />
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => {
+              onRename(node);
+              onClose();
+            }}
+          >
+            <Text style={styles.menuItemText}>重命名</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => {
+              onDelete(node);
+              onClose();
+            }}
+          >
+            <Text style={[styles.menuItemText, styles.dangerText]}>删除</Text>
+          </TouchableOpacity>
+          {node.type === 'directory' && (
+            <>
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  onCreateFile(node);
+                  onClose();
+                }}
+              >
+                <Text style={styles.menuItemText}>新建文件</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  onCreateDirectory(node);
+                  onClose();
+                }}
+              >
+                <Text style={styles.menuItemText}>新建文件夹</Text>
+              </TouchableOpacity>
+            </>
+          )}
+          <View style={styles.menuDivider} />
+          <TouchableOpacity style={styles.menuItem} onPress={onClose}>
+            <Text style={styles.menuItemText}>取消</Text>
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+};
+
+// 重命名对话框
+interface RenameDialogProps {
+  visible: boolean;
+  node: FileNode | null;
+  onClose: () => void;
+  onRename: (node: FileNode, newName: string) => void;
+}
+
+const RenameDialog: React.FC<RenameDialogProps> = ({
+  visible,
+  node,
+  onClose,
+  onRename,
+}) => {
+  const [newName, setNewName] = useState(node?.name || '');
+
+  if (!node) return null;
+
+  const handleRename = () => {
+    if (newName.trim()) {
+      onRename(node, newName.trim());
+      onClose();
+    } else {
+      Alert.alert('错误', '文件名不能为空');
+    }
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <TouchableOpacity
+        style={styles.modalOverlay}
+        activeOpacity={1}
+        onPress={onClose}
+      >
+        <View style={styles.dialogContainer}>
+          <Text style={styles.dialogTitle}>重命名</Text>
+          <TextInput
+            style={styles.input}
+            value={newName}
+            onChangeText={setNewName}
+            placeholder="输入新名称"
+            autoFocus
+          />
+          <View style={styles.dialogButtons}>
+            <TouchableOpacity style={styles.dialogButton} onPress={onClose}>
+              <Text style={styles.dialogButtonText}>取消</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.dialogButton, styles.primaryButton]}
+              onPress={handleRename}
+            >
+              <Text style={[styles.dialogButtonText, styles.primaryButtonText]}>
+                确定
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+};
+
+// 新建文件/文件夹对话框
+interface CreateDialogProps {
+  visible: boolean;
+  parent: FileNode | null;
+  type: 'file' | 'directory';
+  onClose: () => void;
+  onCreate: (parent: FileNode, name: string) => void;
+}
+
+const CreateDialog: React.FC<CreateDialogProps> = ({
+  visible,
+  parent,
+  type,
+  onClose,
+  onCreate,
+}) => {
+  const [name, setName] = useState('');
+
+  if (!parent) return null;
+
+  const handleCreate = () => {
+    if (name.trim()) {
+      onCreate(parent, name.trim());
+      onClose();
+    } else {
+      Alert.alert('错误', '名称不能为空');
+    }
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <TouchableOpacity
+        style={styles.modalOverlay}
+        activeOpacity={1}
+        onPress={onClose}
+      >
+        <View style={styles.dialogContainer}>
+          <Text style={styles.dialogTitle}>
+            新建{type === 'file' ? '文件' : '文件夹'}
+          </Text>
+          <TextInput
+            style={styles.input}
+            value={name}
+            onChangeText={setName}
+            placeholder={`输入${type === 'file' ? '文件' : '文件夹'}名称`}
+            autoFocus
+          />
+          <View style={styles.dialogButtons}>
+            <TouchableOpacity style={styles.dialogButton} onPress={onClose}>
+              <Text style={styles.dialogButtonText}>取消</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.dialogButton, styles.primaryButton]}
+              onPress={handleCreate}
+            >
+              <Text style={[styles.dialogButtonText, styles.primaryButtonText]}>
+                创建
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+};
+
 // 单个文件树节点组件
 const FileTreeNode: React.FC<FileTreeProps> = memo(({
   node,
@@ -81,7 +312,16 @@ const FileTreeNode: React.FC<FileTreeProps> = memo(({
   onToggleNode,
   onSelectNode,
   level = 0,
+  onRename,
+  onDelete,
+  onCreateFile,
+  onCreateDirectory,
 }) => {
+  const [showMenu, setShowMenu] = useState(false);
+  const [showRenameDialog, setShowRenameDialog] = useState(false);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [createType, setCreateType] = useState<'file' | 'directory'>('file');
+
   const isExpanded = expandedNodes.has(node.id);
   const isSelected = selectedNodeId === node.id;
   const hasChildren = node.type === 'directory' && node.children && node.children.length > 0;
@@ -98,6 +338,39 @@ const FileTreeNode: React.FC<FileTreeProps> = memo(({
     onToggleNode(node.id);
   }, [node.id, onToggleNode]);
 
+  const handleLongPress = useCallback(() => {
+    setShowMenu(true);
+  }, []);
+
+  const handleRename = useCallback(() => {
+    setShowRenameDialog(true);
+  }, []);
+
+  const handleDelete = useCallback(() => {
+    Alert.alert(
+      '确认删除',
+      `确定要删除 ${node.name} 吗？`,
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '删除',
+          style: 'destructive',
+          onPress: () => onDelete?.(node),
+        },
+      ]
+    );
+  }, [node, onDelete]);
+
+  const handleCreateFile = useCallback(() => {
+    setCreateType('file');
+    setShowCreateDialog(true);
+  }, []);
+
+  const handleCreateDirectory = useCallback(() => {
+    setCreateType('directory');
+    setShowCreateDialog(true);
+  }, []);
+
   return (
     <View>
       <TouchableOpacity
@@ -107,6 +380,7 @@ const FileTreeNode: React.FC<FileTreeProps> = memo(({
           isSelected && styles.selectedNode,
         ]}
         onPress={handlePress}
+        onLongPress={handleLongPress}
         activeOpacity={0.7}
         delayLongPress={500}
       >
@@ -162,10 +436,42 @@ const FileTreeNode: React.FC<FileTreeProps> = memo(({
               onToggleNode={onToggleNode}
               onSelectNode={onSelectNode}
               level={level + 1}
+              onRename={onRename}
+              onDelete={onDelete}
+              onCreateFile={onCreateFile}
+              onCreateDirectory={onCreateDirectory}
             />
           ))}
         </View>
       )}
+
+      {/* 操作菜单 */}
+      <ActionMenu
+        visible={showMenu}
+        node={node}
+        onClose={() => setShowMenu(false)}
+        onRename={handleRename}
+        onDelete={handleDelete}
+        onCreateFile={handleCreateFile}
+        onCreateDirectory={handleCreateDirectory}
+      />
+
+      {/* 重命名对话框 */}
+      <RenameDialog
+        visible={showRenameDialog}
+        node={node}
+        onClose={() => setShowRenameDialog(false)}
+        onRename={onRename!}
+      />
+
+      {/* 新建对话框 */}
+      <CreateDialog
+        visible={showCreateDialog}
+        parent={node}
+        type={createType}
+        onClose={() => setShowCreateDialog(false)}
+        onCreate={createType === 'file' ? onCreateFile! : onCreateDirectory!}
+      />
     </View>
   );
 });
@@ -190,6 +496,10 @@ interface FileTreeListProps {
   refreshing?: boolean;
   onRefresh?: () => void;
   loading?: boolean;
+  onRename?: (node: FileNode, newName: string) => void;
+  onDelete?: (node: FileNode) => void;
+  onCreateFile?: (parent: FileNode, fileName: string) => void;
+  onCreateDirectory?: (parent: FileNode, dirName: string) => void;
 }
 
 // 将树结构扁平化以便使用 FlatList
@@ -218,6 +528,10 @@ export const FileTree: React.FC<FileTreeListProps> = memo(({
   refreshing,
   onRefresh,
   loading,
+  onRename,
+  onDelete,
+  onCreateFile,
+  onCreateDirectory,
 }) => {
   // 加载状态显示骨架屏
   if (loading) {
@@ -244,19 +558,26 @@ export const FileTree: React.FC<FileTreeListProps> = memo(({
   // 扁平化数据
   const flattenedData = flattenTree(fileTree, expandedNodes);
 
-  const renderItem = useCallback(({ item }: { item: { node: FileNode; level: number } }) => (
-    <FileTreeNode
-      node={item.node}
-      expandedNodes={expandedNodes}
-      selectedNodeId={selectedNodeId}
-      onToggleNode={onToggleNode}
-      onSelectNode={onSelectNode}
-      level={item.level}
-    />
-  ), [expandedNodes, selectedNodeId, onToggleNode, onSelectNode]);
+  const renderItem = useCallback(
+    ({ item }: { item: { node: FileNode; level: number } }) => (
+      <FileTreeNode
+        node={item.node}
+        expandedNodes={expandedNodes}
+        selectedNodeId={selectedNodeId}
+        onToggleNode={onToggleNode}
+        onSelectNode={onSelectNode}
+        level={item.level}
+        onRename={onRename}
+        onDelete={onDelete}
+        onCreateFile={onCreateFile}
+        onCreateDirectory={onCreateDirectory}
+      />
+    ),
+    [expandedNodes, selectedNodeId, onToggleNode, onSelectNode, onRename, onDelete, onCreateFile, onCreateDirectory]
+  );
 
-  const keyExtractor = useCallback((item: { node: FileNode; level: number }) =>
-    `${item.node.id}-${item.level}`,
+  const keyExtractor = useCallback(
+    (item: { node: FileNode; level: number }) => `${item.node.id}-${item.level}`,
     []
   );
 
@@ -272,6 +593,13 @@ export const FileTree: React.FC<FileTreeListProps> = memo(({
       maxToRenderPerBatch={10}
       windowSize={5}
       removeClippedSubviews={true}
+      maxToRenderPerBatch={10}
+      updateCellsBatchingPeriod={100}
+      getItemLayout={({ index }) => ({
+        length: 50, // 估计行高
+        offset: 50 * index,
+        index,
+      })}
     />
   );
 });
@@ -376,6 +704,89 @@ const styles = StyleSheet.create({
     height: 16,
     borderRadius: 4,
     backgroundColor: Colors.light.border,
+  },
+  // 操作菜单样式
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  menuContainer: {
+    backgroundColor: Colors.light.surface,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 34, // 适配底部安全区域
+  },
+  menuTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.light.text,
+    textAlign: 'center',
+    paddingVertical: 16,
+  },
+  menuDivider: {
+    height: 1,
+    backgroundColor: Colors.light.border,
+  },
+  menuItem: {
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.light.border,
+  },
+  menuItemText: {
+    fontSize: 16,
+    color: Colors.light.text,
+    textAlign: 'center',
+  },
+  dangerText: {
+    color: Colors.danger,
+  },
+  // 对话框样式
+  dialogContainer: {
+    backgroundColor: Colors.light.surface,
+    marginHorizontal: 40,
+    borderRadius: 12,
+    padding: 20,
+    alignSelf: 'center',
+  },
+  dialogTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: Colors.light.text,
+    marginBottom: 16,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    color: Colors.light.text,
+    marginBottom: 20,
+  },
+  dialogButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  dialogButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  primaryButton: {
+    backgroundColor: Colors.primary,
+    marginLeft: 12,
+  },
+  dialogButtonText: {
+    fontSize: 16,
+    color: Colors.light.text,
+  },
+  primaryButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
   },
 });
 

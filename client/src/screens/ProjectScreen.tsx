@@ -1,13 +1,10 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  ActivityIndicator,
   Modal,
   Alert,
+  StyleSheet,
+  ActivityIndicator,
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { FileTree } from '../components/file/FileTree';
@@ -24,17 +21,16 @@ import {
   fetchFileTree,
   fetchFileContent,
   searchFiles,
-  setFileTree,
-  setFileContent,
-  setFileLoading,
 } from '../state/slices/projectSlice';
 import { RootState } from '../state/store';
 import { Colors } from '../constants/colors';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { WebSocketMessage } from '../services/websocket/WebSocketClient';
-
-// API 基础 URL
-const API_BASE_URL = 'http://localhost:3000/api';
+import ProjectHeader from './components/ProjectHeader';
+import SearchBar from './components/SearchBar';
+import ProjectToolbar from './components/ProjectToolbar';
+import SearchResults from './components/SearchResults';
+import ErrorState from './components/ErrorState';
 
 // 项目路径配置
 const PROJECT_PATH = '/project';
@@ -62,6 +58,7 @@ export const ProjectScreen: React.FC = () => {
   const [localSearchQuery, setLocalSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [projectPath, setProjectPath] = useState(PROJECT_PATH);
+  const [showSearchResults, setShowSearchResults] = useState(false);
 
   // 加载文件树
   const loadFileTree = useCallback(async () => {
@@ -72,32 +69,14 @@ export const ProjectScreen: React.FC = () => {
 
     setRefreshing(true);
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/project/file-tree?path=${encodeURIComponent(projectPath)}&maxDepth=3`,
-        {
-          headers: {
-            'Authorization': `Bearer ${getClient?.() || ''}`,
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      if (data.success) {
-        dispatch(setFileTree(data.data));
-      } else {
-        throw new Error(data.error || 'Failed to load file tree');
-      }
+      await dispatch(fetchFileTree({ projectPath, maxDepth: 3 })).unwrap();
     } catch (error) {
       console.error('Failed to load file tree:', error);
       Alert.alert('错误', '加载文件树失败，请检查网络连接');
     } finally {
       setRefreshing(false);
     }
-  }, [connected, projectPath, dispatch, getClient]);
+  }, [connected, projectPath, dispatch]);
 
   // 初始化文件树
   useEffect(() => {
@@ -138,37 +117,15 @@ export const ProjectScreen: React.FC = () => {
       dispatch(setCurrentFile(node));
       setShowViewer(true);
 
-      // 加载真实文件内容
-      dispatch(setFileLoading(true));
+      // 加载文件内容
       try {
-        const response = await fetch(
-          `${API_BASE_URL}/file/read?path=${encodeURIComponent(node.path)}`,
-          {
-            headers: {
-              'Authorization': `Bearer ${getClient?.() || ''}`,
-            },
-          }
-        );
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const data = await response.json();
-        if (data.success) {
-          dispatch(setFileContent(data.data.content));
-        } else {
-          throw new Error(data.error || 'Failed to load file content');
-        }
+        await dispatch(fetchFileContent(node.path)).unwrap();
       } catch (error) {
         console.error('Failed to load file content:', error);
-        dispatch(setFileContent(`// 加载文件失败: ${node.name}\n// 错误: ${(error as Error).message}`));
         Alert.alert('错误', '加载文件内容失败');
-      } finally {
-        dispatch(setFileLoading(false));
       }
     }
-  }, [dispatch, getClient]);
+  }, [dispatch]);
 
   const handleCloseViewer = useCallback(() => {
     setShowViewer(false);
@@ -178,34 +135,13 @@ export const ProjectScreen: React.FC = () => {
   const handleRefreshFile = useCallback(async () => {
     if (!currentFile) return;
 
-    dispatch(setFileLoading(true));
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/file/read?path=${encodeURIComponent(currentFile.path)}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${getClient?.() || ''}`,
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      if (data.success) {
-        dispatch(setFileContent(data.data.content));
-      } else {
-        throw new Error(data.error || 'Failed to refresh file content');
-      }
+      await dispatch(fetchFileContent(currentFile.path)).unwrap();
     } catch (error) {
       console.error('Failed to refresh file content:', error);
       Alert.alert('错误', '刷新文件内容失败');
-    } finally {
-      dispatch(setFileLoading(false));
     }
-  }, [currentFile, dispatch, getClient]);
+  }, [currentFile, dispatch]);
 
   const handleRefreshTree = useCallback(() => {
     loadFileTree();
@@ -220,37 +156,20 @@ export const ProjectScreen: React.FC = () => {
     }
 
     dispatch(setSearchQuery(localSearchQuery.trim()));
+    setShowSearchResults(true);
 
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/project/search?path=${encodeURIComponent(projectPath)}&q=${encodeURIComponent(localSearchQuery.trim())}&maxResults=50`,
-        {
-          headers: {
-            'Authorization': `Bearer ${getClient?.() || ''}`,
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      if (data.success) {
-        // 搜索结果处理
-        console.log('Search results:', data.data);
-      } else {
-        throw new Error(data.error || 'Search failed');
-      }
+      await dispatch(searchFiles({ projectPath, query: localSearchQuery.trim() })).unwrap();
     } catch (error) {
       console.error('Search failed:', error);
       Alert.alert('错误', '搜索失败');
     }
-  }, [localSearchQuery, connected, projectPath, dispatch, getClient]);
+  }, [localSearchQuery, connected, projectPath, dispatch]);
 
   const handleClearSearch = useCallback(() => {
     setLocalSearchQuery('');
     dispatch(clearSearch());
+    setShowSearchResults(false);
   }, [dispatch]);
 
   const handleExpandAll = useCallback(() => {
@@ -261,118 +180,31 @@ export const ProjectScreen: React.FC = () => {
     dispatch(collapseAll());
   }, [dispatch]);
 
-  // 使用 useMemo 优化格式化消息
-  const formattedSearchResults = useMemo(() => {
-    return searchResults.map(node => ({
-      id: node.id,
-      name: node.name,
-      path: node.path,
-      type: node.type,
-    }));
-  }, [searchResults]);
+  const handleToggleSearch = useCallback(() => {
+    setShowSearch(!showSearch);
+    if (!showSearch) {
+      setShowSearchResults(false);
+    }
+  }, [showSearch]);
 
-  return (
-    <View style={styles.container}>
-      {/* 头部 */}
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <Text style={styles.title}>项目文件</Text>
-          <View style={styles.statusContainer}>
-            <View style={[styles.statusIndicator, connected ? styles.connectedStatus : styles.disconnectedStatus]} />
-            <Text style={styles.statusText}>
-              {connected ? '已连接' : '未连接'}
-            </Text>
-          </View>
-        </View>
-        <View style={styles.headerActions}>
-          <TouchableOpacity
-            style={styles.headerButton}
-            onPress={() => setShowSearch(!showSearch)}
-          >
-            <Text style={styles.headerButtonText}>🔍</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.headerButton}
-            onPress={handleRefreshTree}
-            disabled={!connected || refreshing}
-          >
-            <Text style={[styles.headerButtonText, (!connected || refreshing) && styles.disabledText]}>
-              {refreshing ? '⏳' : '🔄'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+  // 渲染内容
+  const renderContent = () => {
+    if (error) {
+      return <ErrorState error={error} onRetry={handleRefreshTree} />;
+    }
 
-      {/* 搜索栏 */}
-      {showSearch && (
-        <View style={styles.searchContainer}>
-          <View style={styles.searchInputContainer}>
-            <Text style={styles.searchIcon}>🔍</Text>
-            <TextInput
-              style={styles.searchInput}
-              placeholder="搜索文件..."
-              value={localSearchQuery}
-              onChangeText={setLocalSearchQuery}
-              onSubmitEditing={handleSearch}
-              returnKeyType="search"
-              editable={connected}
-            />
-            {localSearchQuery.length > 0 && (
-              <TouchableOpacity onPress={handleClearSearch}>
-                <Text style={styles.clearIcon}>✕</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-          <TouchableOpacity
-            style={[styles.searchButton, !connected && styles.disabledButton]}
-            onPress={handleSearch}
-            disabled={!connected}
-          >
-            <Text style={styles.searchButtonText}>搜索</Text>
-          </TouchableOpacity>
-        </View>
-      )}
+    if (showSearchResults) {
+      return (
+        <SearchResults
+          results={searchResults}
+          loading={searchLoading}
+          query={searchQuery}
+          onSelectNode={handleSelectNode}
+        />
+      );
+    }
 
-      {/* 工具栏 */}
-      <View style={styles.toolbar}>
-        <TouchableOpacity style={styles.toolbarButton} onPress={handleExpandAll}>
-          <Text style={styles.toolbarButtonText}>展开全部</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.toolbarButton} onPress={handleCollapseAll}>
-          <Text style={styles.toolbarButtonText}>收起全部</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* 搜索结果 */}
-      {searchQuery && (
-        <View style={styles.searchResultsContainer}>
-          <Text style={styles.searchResultsText}>
-            搜索结果: "{searchQuery}" ({formattedSearchResults.length})
-          </Text>
-          {searchLoading && <ActivityIndicator size="small" color={Colors.primary} />}
-        </View>
-      )}
-
-      {/* 加载状态 */}
-      {loading && (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={styles.loadingText}>加载中...</Text>
-        </View>
-      )}
-
-      {/* 错误状态 */}
-      {error && (
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorIcon}>⚠️</Text>
-          <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={handleRefreshTree}>
-            <Text style={styles.retryButtonText}>重试</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {/* 文件树 */}
+    return (
       <View style={styles.fileTreeContainer}>
         <FileTree
           fileTree={fileTree}
@@ -382,8 +214,43 @@ export const ProjectScreen: React.FC = () => {
           onSelectNode={handleSelectNode}
           refreshing={refreshing}
           onRefresh={handleRefreshTree}
+          loading={loading}
         />
       </View>
+    );
+  };
+
+  return (
+    <View style={styles.container}>
+      {/* 头部 */}
+      <ProjectHeader
+        connected={connected}
+        refreshing={refreshing}
+        onToggleSearch={handleToggleSearch}
+        onRefresh={handleRefreshTree}
+      />
+
+      {/* 搜索栏 */}
+      {showSearch && (
+        <SearchBar
+          query={localSearchQuery}
+          onChangeText={setLocalSearchQuery}
+          onSubmit={handleSearch}
+          onClear={handleClearSearch}
+          editable={connected}
+        />
+      )}
+
+      {/* 工具栏 */}
+      {!showSearchResults && (
+        <ProjectToolbar
+          onExpandAll={handleExpandAll}
+          onCollapseAll={handleCollapseAll}
+        />
+      )}
+
+      {/* 内容区域 */}
+      {renderContent()}
 
       {/* 文件查看器模态框 */}
       <Modal
@@ -408,179 +275,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.light.background,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: Colors.light.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.light.border,
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: Colors.light.text,
-    marginRight: 12,
-  },
-  statusContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  statusIndicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 6,
-  },
-  connectedStatus: {
-    backgroundColor: Colors.success,
-  },
-  disconnectedStatus: {
-    backgroundColor: Colors.danger,
-  },
-  statusText: {
-    fontSize: 12,
-    color: Colors.light.textSecondary,
-  },
-  headerActions: {
-    flexDirection: 'row',
-  },
-  headerButton: {
-    padding: 8,
-    marginLeft: 8,
-  },
-  headerButtonText: {
-    fontSize: 18,
-  },
-  disabledText: {
-    opacity: 0.5,
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: Colors.light.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.light.border,
-  },
-  searchInputContainer: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.light.background,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    marginRight: 8,
-  },
-  searchIcon: {
-    fontSize: 14,
-    marginRight: 8,
-    color: Colors.light.textSecondary,
-  },
-  searchInput: {
-    flex: 1,
-    height: 36,
-    fontSize: 14,
-    color: Colors.light.text,
-  },
-  clearIcon: {
-    fontSize: 14,
-    color: Colors.light.textSecondary,
-    padding: 4,
-  },
-  searchButton: {
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  disabledButton: {
-    backgroundColor: Colors.light.textSecondary,
-    opacity: 0.5,
-  },
-  searchButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  toolbar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: Colors.light.background,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.light.border,
-  },
-  toolbarButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    marginRight: 12,
-    backgroundColor: Colors.light.surface,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: Colors.light.border,
-  },
-  toolbarButtonText: {
-    fontSize: 12,
-    color: Colors.light.text,
-  },
-  searchResultsContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: Colors.light.background,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.light.border,
-  },
-  searchResultsText: {
-    fontSize: 14,
-    color: Colors.light.textSecondary,
-  },
-  loadingContainer: {
-    paddingVertical: 20,
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 8,
-    fontSize: 14,
-    color: Colors.light.textSecondary,
-  },
-  errorContainer: {
-    padding: 16,
-    alignItems: 'center',
-    backgroundColor: Colors.light.background,
-  },
-  errorIcon: {
-    fontSize: 32,
-    marginBottom: 8,
-  },
-  errorText: {
-    fontSize: 14,
-    color: Colors.danger,
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-  retryButton: {
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
   },
   fileTreeContainer: {
     flex: 1,

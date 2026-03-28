@@ -16,7 +16,10 @@ interface UseWebSocketReturn {
 // 存储全局客户端实例的引用
 const clientRef = useRef<WebSocketClient | null>(null);
 
-export const useWebSocket = (options: WebSocketOptions | string = 'ws://localhost:3001'): UseWebSocketReturn => {
+// 从环境变量获取WebSocket基础URL
+const WS_BASE_URL = process.env.EXPO_PUBLIC_WS_BASE_URL || 'ws://localhost:3001';
+
+export const useWebSocket = (options: WebSocketOptions | string = WS_BASE_URL): UseWebSocketReturn => {
   const { connected, reconnecting } = useSelector((state: RootState) => state.websocket);
   
   // 处理options参数，支持字符串URL或完整选项对象

@@ -1,42 +1,73 @@
 import { createSlice, PayloadAction, createAsyncThunk } from '@reduxjs/toolkit';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// API 基础 URL 配置
-const API_BASE_URL = 'http://localhost:3000/api';
+// 从环境变量获取API基础URL
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:3000/api';
 
 // 获取认证 token
-const getAuthToken = (): string | null => {
-  // 从 localStorage 或 Redux store 获取 token
-  return localStorage.getItem('auth_token');
+const getAuthToken = async (): Promise<string | null> => {
+  try {
+    // 使用AsyncStorage替代localStorage，适配React Native
+    const token = await AsyncStorage.getItem('auth_token');
+    return token;
+  } catch (error) {
+    console.error('Error getting auth token:', error);
+    return null;
+  }
 };
 
-// 通用的 fetch 包装器
-const fetchWithAuth = async (url: string, options: RequestInit = {}) => {
-  const token = getAuthToken();
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...((options.headers as Record<string, string>) || {}),
-  };
+// 通用的请求包装器，支持重试和超时
+const fetchWithAuth = async (url: string, options: RequestInit = {}, retries = 3, timeout = 30000) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
+  try {
+    const token = await getAuthToken();
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...((options.headers as Record<string, string>) || {}),
+    };
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(url, {
+      ...options,
+      headers,
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    if (!data.success) {
+      throw new Error(data.error || 'Request failed');
+    }
+
+    return data;
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+
+    if (error.name === 'AbortError') {
+      throw new Error('Request timeout');
+    }
+
+    if (retries > 0) {
+      console.warn(`Request failed, retrying (${retries} attempts left):`, error.message);
+      // 指数退避策略
+      const delay = Math.pow(2, 3 - retries) * 1000;
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return fetchWithAuth(url, options, retries - 1, timeout);
+    }
+
+    throw error;
   }
-
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
-  }
-
-  const data = await response.json();
-  if (!data.success) {
-    throw new Error(data.error || 'Request failed');
-  }
-
-  return data;
 };
 
 export interface FileNode {

@@ -1,11 +1,14 @@
 import fs from 'fs';
 import path from 'path';
+import * as chokidar from 'chokidar';
 import { logger } from '../utils/logger';
 
 interface FileWatcherOptions {
   rootPath: string;
   ignored?: string[];
   debounceTime?: number; // 防抖时间，单位毫秒
+  eventDebounceTime?: number; // 事件去重时间，单位毫秒
+  maxWatchers?: number; // 最大监听器数量
 }
 
 interface FileChangeEvent {
@@ -15,14 +18,17 @@ interface FileChangeEvent {
 }
 
 class FileWatcher {
-  private watchers: Map<string, fs.FSWatcher> = new Map();
+  private watcher: chokidar.FSWatcher | null = null;
   private readonly rootPath: string;
   private readonly ignored: string[];
   private readonly debounceTime: number;
+  private readonly eventDebounceTime: number;
+  private readonly maxWatchers: number;
   private callbacks: ((event: FileChangeEvent) => void)[] = [];
   private isWatching: boolean = false;
   private eventCache: Map<string, NodeJS.Timeout> = new Map();
   private processedFiles: Set<string> = new Set();
+  private fileMoveMap: Map<string, string> = new Map(); // 用于跟踪文件移动
 
   constructor(options: FileWatcherOptions) {
     this.rootPath = path.resolve(options.rootPath);
@@ -37,6 +43,8 @@ class FileWatcher {
       '**/Thumbs.db'
     ];
     this.debounceTime = options.debounceTime || 300;
+    this.eventDebounceTime = options.eventDebounceTime || 1000;
+    this.maxWatchers = options.maxWatchers || 10000;
   }
 
   /**
@@ -49,7 +57,43 @@ class FileWatcher {
     }
 
     try {
-      this.traverseAndWatch(this.rootPath);
+      // 检查目录数量
+      const dirCount = this.countDirectories(this.rootPath);
+      if (dirCount > this.maxWatchers) {
+        logger.warn(`Directory count (${dirCount}) exceeds max watchers (${this.maxWatchers})`);
+      }
+
+      // 使用chokidar创建监听器
+      this.watcher = chokidar.watch(this.rootPath, {
+        ignored: this.ignored,
+        persistent: true,
+        depth: 99,
+        ignoreInitial: true,
+        followSymlinks: false,
+        usePolling: false,
+        interval: 100,
+        binaryInterval: 300,
+        awaitWriteFinish: {
+          stabilityThreshold: 100,
+          pollInterval: 100
+        }
+      });
+
+      // 监听事件
+      this.watcher
+        .on('add', (filePath: string) => this.handleDebouncedEvent('add', filePath))
+        .on('change', (filePath: string) => this.handleDebouncedEvent('change', filePath))
+        .on('unlink', (filePath: string) => {
+          // 记录可能的移动操作
+          this.fileMoveMap.set(filePath, Date.now().toString());
+          this.handleDebouncedEvent('unlink', filePath);
+        })
+        .on('addDir', (dirPath: string) => this.handleDebouncedEvent('addDir', dirPath))
+        .on('unlinkDir', (dirPath: string) => this.handleDebouncedEvent('unlinkDir', dirPath))
+        .on('error', (error: unknown) => {
+          logger.error(`File watcher error: ${(error as Error).message}`);
+        });
+
       this.isWatching = true;
       logger.info(`File watcher started for: ${this.rootPath}`);
     } catch (error) {
@@ -59,111 +103,98 @@ class FileWatcher {
   }
 
   /**
-   * 遍历目录并开始监听
+   * 处理防抖事件
    */
-  private traverseAndWatch(dirPath: string): void {
-    // 检查是否被忽略
-    if (this.isIgnored(dirPath)) {
-      return;
+  private handleDebouncedEvent(eventType: FileChangeEvent['type'], filePath: string): void {
+    // 延迟处理，避免频繁触发
+    const cacheKey = `${eventType}:${filePath}`;
+    if (this.eventCache.has(cacheKey)) {
+      clearTimeout(this.eventCache.get(cacheKey)!);
     }
-
-    // 监听当前目录
-    const watcher = fs.watch(dirPath, { recursive: false }, (eventType, filename) => {
-      if (!filename) return;
-
-      const fullPath = path.join(dirPath, filename);
-      
-      // 检查是否被忽略
-      if (this.isIgnored(fullPath)) {
-        return;
-      }
-
-      // 延迟处理，避免频繁触发
-      const cacheKey = `${eventType}:${fullPath}`;
-      if (this.eventCache.has(cacheKey)) {
-        clearTimeout(this.eventCache.get(cacheKey)!);
-      }
-      
-      const timeout = setTimeout(() => {
-        this.handleFileEvent(eventType, fullPath);
-        this.eventCache.delete(cacheKey);
-      }, this.debounceTime);
-      
-      this.eventCache.set(cacheKey, timeout);
-    });
-
-    this.watchers.set(dirPath, watcher);
-
-    // 遍历子目录
-    try {
-      const entries = fs.readdirSync(dirPath, { withFileTypes: true });
-      for (const entry of entries) {
-        if (entry.isDirectory()) {
-          const subDirPath = path.join(dirPath, entry.name);
-          this.traverseAndWatch(subDirPath);
-        }
-      }
-    } catch (error) {
-      logger.warn(`Failed to traverse directory ${dirPath}: ${(error as Error).message}`);
-    }
+    
+    const timeout = setTimeout(() => {
+      this.handleFileEvent(eventType, filePath);
+      this.eventCache.delete(cacheKey);
+    }, this.debounceTime);
+    
+    this.eventCache.set(cacheKey, timeout);
   }
 
   /**
    * 处理文件事件
    */
-  private handleFileEvent(eventType: string, filePath: string): void {
+  private async handleFileEvent(eventType: FileChangeEvent['type'], filePath: string): Promise<void> {
     try {
-      const stats = fs.statSync(filePath);
-      
-      if (stats.isDirectory()) {
-        // 检查是否是新创建的目录
-        if (!this.watchers.has(filePath)) {
-          this.traverseAndWatch(filePath);
-          this.emitEvent('addDir', filePath);
+      if (eventType === 'add') {
+        // 检查是否是移动操作
+        const movedFrom = this.checkFileMove(filePath);
+        if (movedFrom) {
+          logger.debug(`File moved from ${movedFrom} to ${filePath}`);
+          // 可以在这里触发移动事件
+        }
+      }
+
+      let stats: fs.Stats | undefined;
+      try {
+        stats = await fs.promises.stat(filePath);
+      } catch (error) {
+        // 文件可能已被删除
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          throw error;
+        }
+      }
+
+      this.emitEvent(eventType, filePath, stats);
+    } catch (error) {
+      logger.warn(`Failed to handle file event for ${filePath}: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * 检查文件是否是从其他位置移动过来的
+   */
+  private checkFileMove(newPath: string): string | null {
+    // 简单的移动检测逻辑
+    // 实际项目中可能需要更复杂的实现
+    for (const [oldPath, timestamp] of this.fileMoveMap.entries()) {
+      const timeDiff = Date.now() - parseInt(timestamp);
+      if (timeDiff < 1000) { // 1秒内的操作视为可能的移动
+        // 检查文件名是否相同
+        if (path.basename(oldPath) === path.basename(newPath)) {
+          this.fileMoveMap.delete(oldPath);
+          return oldPath;
         }
       } else {
-        // 文件事件
-        if (eventType === 'change') {
-          this.emitEvent('change', filePath, stats);
-        } else if (eventType === 'rename') {
-          // 检查文件是否存在
-          try {
-            fs.accessSync(filePath);
-            this.emitEvent('add', filePath, stats);
-          } catch {
-            this.emitEvent('unlink', filePath);
-          }
+        // 清理过期的移动记录
+        this.fileMoveMap.delete(oldPath);
+      }
+    }
+    return null;
+  }
+
+  /**
+   * 统计目录数量
+   */
+  private countDirectories(dirPath: string): number {
+    let count = 0;
+    try {
+      const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isDirectory() && !this.isIgnored(path.join(dirPath, entry.name))) {
+          count++;
+          count += this.countDirectories(path.join(dirPath, entry.name));
         }
       }
     } catch (error) {
-      // 文件可能已被删除
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        // 检查是否是目录
-        if (this.watchers.has(filePath)) {
-          const watcher = this.watchers.get(filePath);
-          if (watcher) {
-            watcher.close();
-          }
-          this.watchers.delete(filePath);
-          this.emitEvent('unlinkDir', filePath);
-        } else {
-          // 只处理文件删除事件，避免目录删除时的大量事件
-          if (!fs.existsSync(path.dirname(filePath))) {
-            // 父目录不存在，可能是目录被删除，跳过
-            return;
-          }
-          this.emitEvent('unlink', filePath);
-        }
-      } else {
-        logger.warn(`Failed to handle file event for ${filePath}: ${(error as Error).message}`);
-      }
+      logger.warn(`Failed to count directories in ${dirPath}: ${(error as Error).message}`);
     }
+    return count;
   }
 
   /**
    * 停止文件监听
    */
-  stop(): void {
+  async stop(): Promise<void> {
     if (!this.isWatching) {
       logger.warn('File watcher is not running');
       return;
@@ -176,12 +207,13 @@ class FileWatcher {
       }
       this.eventCache.clear();
       this.processedFiles.clear();
+      this.fileMoveMap.clear();
 
-      // 关闭所有监听器
-      for (const [dirPath, watcher] of this.watchers) {
-        watcher.close();
+      // 关闭监听器
+      if (this.watcher) {
+        await this.watcher.close();
+        this.watcher = null;
       }
-      this.watchers.clear();
       this.isWatching = false;
       logger.info('File watcher stopped');
     } catch (error) {
@@ -227,10 +259,10 @@ class FileWatcher {
     // 标记为已处理
     this.processedFiles.add(eventKey);
     
-    // 1秒后移除标记，允许相同事件再次触发
+    // 事件去重时间后移除标记，允许相同事件再次触发
     setTimeout(() => {
       this.processedFiles.delete(eventKey);
-    }, 1000);
+    }, this.eventDebounceTime);
     
     const event: FileChangeEvent = {
       type,
@@ -289,13 +321,13 @@ class FileWatcher {
     isWatching: boolean;
     rootPath: string;
     ignored: string[];
-    watchedDirectories: number;
+    watching: boolean;
   } {
     return {
       isWatching: this.isWatching,
       rootPath: this.rootPath,
       ignored: this.ignored,
-      watchedDirectories: this.watchers.size
+      watching: this.watcher !== null
     };
   }
 

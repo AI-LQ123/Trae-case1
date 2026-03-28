@@ -37,9 +37,9 @@ describe('FileWatcher', () => {
     });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     // 停止监听器
-    watcher.stop();
+    await watcher.stop();
 
     // 清理测试目录
     if (fs.existsSync(testDir)) {
@@ -54,11 +54,11 @@ describe('FileWatcher', () => {
     expect(status.rootPath).toBe(testDir);
   });
 
-  test('should stop watching when stop() is called', () => {
+  test('should stop watching when stop() is called', async () => {
     watcher.start();
     expect(watcher.getStatus().isWatching).toBe(true);
 
-    watcher.stop();
+    await watcher.stop();
     expect(watcher.getStatus().isWatching).toBe(false);
   });
 
@@ -184,10 +184,12 @@ describe('FileWatcher', () => {
     expect(status.isWatching).toBe(false);
     expect(status.rootPath).toBe(testDir);
     expect(status.ignored).toContain('**/node_modules/**');
+    expect(status.watching).toBe(false);
 
     watcher.start();
     const runningStatus = watcher.getStatus();
     expect(runningStatus.isWatching).toBe(true);
+    expect(runningStatus.watching).toBe(true);
   });
 
   test('should handle scan operation', async () => {
