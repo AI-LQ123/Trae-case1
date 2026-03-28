@@ -12,7 +12,7 @@ interface ChatPayload {
 export class ChatHandler {
   private connection: WebSocket;
   private deviceId: string;
-  private messageQueue: Map<string, { promise: Promise<void>; timeout: NodeJS.Timeout }> = new Map();
+  private messageQueue: Map<string, Promise<void>> = new Map();
   private static readonly QUEUE_TIMEOUT = 5 * 60 * 1000; // 5分钟超时
 
   constructor(connection: WebSocket, deviceId: string) {
@@ -106,8 +106,9 @@ export class ChatHandler {
       });
     } catch (error) {
       console.error('Error handling chat message:', error);
-      if (error instanceof Error && error.message === 'sessionId is required for chat:send messages') {
-        this.sendError('sessionId is required for chat messages');
+      if (error instanceof Error && error.message === 'Invalid sessionId') {
+        // 错误已经在getSessionIdFromMessage中发送，这里不需要重复发送
+        return;
       } else {
         this.sendError('Failed to handle chat message');
       }
@@ -153,17 +154,11 @@ export class ChatHandler {
   private getSessionIdFromMessage(message: WebSocketMessage): string {
     // 从消息payload中获取sessionId
     const payload = message.payload as ChatPayload;
-    if (payload && payload.sessionId) {
-      return payload.sessionId;
+    if (!payload?.sessionId || typeof payload.sessionId !== 'string') {
+      this.sendError('Missing or invalid sessionId in chat:send message');
+      throw new Error('Invalid sessionId');
     }
-    
-    // 对于chat:send消息，要求客户端显式传递sessionId
-    if (message.type === 'chat:send') {
-      throw new Error('sessionId is required for chat:send messages');
-    }
-    
-    // 对于其他消息类型，使用deviceId作为默认值
-    return this.deviceId;
+    return payload.sessionId;
   }
 
   private generateMessageId(): string {
@@ -189,30 +184,23 @@ export class ChatHandler {
   }
 
   private async processMessageWithQueue(sessionId: string, handler: () => Promise<void>): Promise<void> {
-    const previous = this.messageQueue.get(sessionId)?.promise || Promise.resolve();
-    const current = previous.then(() => handler());
-    
-    // 清除之前的超时计时器
-    const previousEntry = this.messageQueue.get(sessionId);
-    if (previousEntry) {
-      clearTimeout(previousEntry.timeout);
-    }
-    
-    // 设置新的超时计时器
-    const timeout = setTimeout(() => {
-      if (this.messageQueue.get(sessionId)?.promise === current) {
-        console.warn(`Message queue timeout for session ${sessionId}`);
+    // 为每个队列任务设置超时定时器
+    const timeoutId = setTimeout(() => {
+      const pending = this.messageQueue.get(sessionId);
+      if (pending) {
         this.messageQueue.delete(sessionId);
+        this.sendError('Message processing timeout');
       }
     }, ChatHandler.QUEUE_TIMEOUT);
-    
-    this.messageQueue.set(sessionId, { promise: current, timeout });
-    
+
     try {
+      const previous = this.messageQueue.get(sessionId) || Promise.resolve();
+      const current = previous.then(() => handler()).finally(() => clearTimeout(timeoutId));
+      this.messageQueue.set(sessionId, current);
       await current;
     } finally {
-      if (this.messageQueue.get(sessionId)?.promise === current) {
-        clearTimeout(timeout);
+      if (this.messageQueue.get(sessionId) === current) {
+        clearTimeout(timeoutId);
         this.messageQueue.delete(sessionId);
       }
     }
