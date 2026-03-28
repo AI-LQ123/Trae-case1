@@ -6,7 +6,7 @@ import { TerminalScreen } from '../screens/TerminalScreen';
 import { ProjectScreen } from '../screens/ProjectScreen';
 import { TasksScreen } from '../screens/TasksScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
-import { ScanScreen } from '../screens/ScanScreen';
+import ScanScreen from '../screens/ScanScreen';
 
 export type RootStackParamList = {
   Main: undefined;
