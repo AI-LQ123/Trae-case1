@@ -16,15 +16,18 @@ import { TerminalOutput, TerminalCommand } from '../../state/slices/terminalSlic
 interface TerminalProps {
   sessionId: string;
   outputs: TerminalOutput[];
-  commands: TerminalCommand[];
+  commands?: TerminalCommand[];
   onSendCommand: (command: string) => void;
   onResize?: (cols: number, rows: number) => void;
   disabled?: boolean;
 }
 
-const { width: screenWidth } = Dimensions.get('window');
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 const CHAR_WIDTH = 8;
+const LINE_HEIGHT = 18;
+const HEADER_HEIGHT = 100;
+const INPUT_HEIGHT = 60;
 
 export const Terminal: React.FC<TerminalProps> = ({
   sessionId,
@@ -39,13 +42,13 @@ export const Terminal: React.FC<TerminalProps> = ({
 
   const terminalWidth = screenWidth - 32;
   const cols = Math.floor(terminalWidth / CHAR_WIDTH);
-  const rows = 24;
+  const rows = Math.floor((screenHeight - HEADER_HEIGHT - INPUT_HEIGHT) / LINE_HEIGHT);
 
   useEffect(() => {
     if (onResize) {
       onResize(cols, rows);
     }
-  }, [cols, onResize]);
+  }, [cols, rows, onResize]);
 
   useEffect(() => {
     scrollToBottom();

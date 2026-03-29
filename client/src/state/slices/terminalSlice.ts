@@ -61,11 +61,14 @@ const terminalSlice = createSlice({
     },
     removeSession: (state, action: PayloadAction<string>) => {
       const sessionId = action.payload;
+      const removedIndex = state.sessions.findIndex(s => s.id === sessionId);
       state.sessions = state.sessions.filter(s => s.id !== sessionId);
       delete state.outputs[sessionId];
       delete state.commandHistory[sessionId];
       if (state.currentSessionId === sessionId) {
-        state.currentSessionId = state.sessions.length > 0 ? state.sessions[0].id : null;
+        // 优先切换到下一个会话，如果没有则切换到上一个，否则为null
+        const nextIndex = removedIndex < state.sessions.length ? removedIndex : removedIndex - 1;
+        state.currentSessionId = nextIndex >= 0 ? state.sessions[nextIndex].id : null;
       }
     },
     updateSession: (state, action: PayloadAction<Partial<TerminalSession> & { id: string }>) => {

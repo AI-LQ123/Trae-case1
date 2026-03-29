@@ -255,8 +255,8 @@ export const TerminalScreen: React.FC = () => {
     );
   };
 
-  const allOutputs = Object.values(outputs).flat();
-  const allCommands = Object.values(commandHistory).flat();
+  const currentOutputs = currentSessionId ? outputs[currentSessionId] || [] : [];
+  const currentCommands = currentSessionId ? commandHistory[currentSessionId] || [] : [];
 
   return (
     <View style={styles.container}>
@@ -289,8 +289,8 @@ export const TerminalScreen: React.FC = () => {
         <View style={styles.terminalWrapper}>
           <Terminal
             sessionId={currentSessionId!}
-            outputs={allOutputs}
-            commands={allCommands}
+            outputs={currentOutputs}
+            commands={currentCommands}
             onSendCommand={handleSendCommand}
             onResize={handleResize}
             disabled={!connected || loading}
