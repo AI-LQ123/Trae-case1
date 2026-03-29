@@ -7,6 +7,7 @@ import {
   RefreshControl,
   TouchableOpacity,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { TaskCard, Task } from '../components/task/TaskCard';
@@ -16,6 +17,7 @@ import {
   setLoading,
   updateTask,
   removeTask,
+  addTask,
 } from '../state/slices/taskSlice';
 import type { RootState, AppDispatch } from '../state/store';
 
@@ -45,10 +47,14 @@ export const TasksScreen: React.FC = () => {
   const fetchTasks = async () => {
     dispatch(setLoading(true));
     try {
+      // TODO: 替换为真实API调用
+      // const response = await axios.get('/api/tasks');
+      // dispatch(setActiveTasks(response.data));
       await new Promise(resolve => setTimeout(resolve, 500));
       dispatch(setLoading(false));
     } catch (error) {
       console.error('Failed to fetch tasks:', error);
+      Alert.alert('错误', '获取任务列表失败，请检查网络连接');
       dispatch(setLoading(false));
     }
   };
@@ -83,6 +89,19 @@ export const TasksScreen: React.FC = () => {
       ]
     );
   }, [dispatch]);
+
+  const handleCreateTask = useCallback(() => {
+    const newTask: Task = {
+      id: `task-${Date.now()}`,
+      name: `新任务 ${activeTasks.length + 1}`,
+      command: 'echo "Hello World"',
+      status: 'pending',
+      progress: 0,
+      createdAt: Date.now(),
+    };
+    dispatch(addTask(newTask));
+    Alert.alert('成功', '任务已创建');
+  }, [dispatch, activeTasks.length]);
 
   const renderFilterButton = useCallback((filter: FilterType, label: string) => (
     <TouchableOpacity
@@ -122,7 +141,16 @@ export const TasksScreen: React.FC = () => {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>任务管理</Text>
+        <TouchableOpacity style={styles.createButton} onPress={handleCreateTask}>
+          <Text style={styles.createButtonText}>+ 新建</Text>
+        </TouchableOpacity>
       </View>
+      {loading && (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>加载中...</Text>
+        </View>
+      )}
 
       <View style={styles.filterContainer}>
         {renderFilterButton('all', '全部')}
