@@ -12,7 +12,7 @@ import {
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
 import { RootState } from '../state/store';
-import { updateNotificationSettings, NotificationSettings } from '../state/slices/settingsSlice';
+import { updateNotificationSettings, NotificationSettings, syncNotificationSettings, resetSyncStatus } from '../state/slices/settingsSlice';
 import { Colors } from '../constants/colors';
 import authService from '../services/auth/authService';
 import notificationService from '../services/notification/notificationService';
@@ -73,6 +73,8 @@ export const SettingsScreen: React.FC = () => {
   const dispatch = useDispatch();
   const navigation = useNavigation<any>();
   const notifications = useSelector((state: RootState) => state.settings.notifications);
+  const syncStatus = useSelector((state: RootState) => state.settings.syncStatus);
+  const syncError = useSelector((state: RootState) => state.settings.syncError);
   const [pairedServers, setPairedServers] = useState<PairedServer[]>([]);
   const [activeServer, setActiveServer] = useState<PairedServer | null>(null);
 
@@ -120,7 +122,7 @@ export const SettingsScreen: React.FC = () => {
     
     // 同步到服务端
     const newSettings = { ...notifications, [key]: value };
-    await notificationService.syncNotificationSettings(newSettings);
+    dispatch(syncNotificationSettings(newSettings));
   };
 
   const formatPairedAt = (timestamp: number): string => {
@@ -309,6 +311,27 @@ export const SettingsScreen: React.FC = () => {
         </TouchableOpacity>
 
         <SectionHeader title="通知设置" />
+        
+        {syncStatus === 'loading' && (
+          <View style={styles.syncStatusContainer}>
+            <Text style={styles.syncStatusText}>正在同步设置...</Text>
+          </View>
+        )}
+        
+        {syncStatus === 'succeeded' && (
+          <View style={[styles.syncStatusContainer, styles.syncStatusSuccess]}>
+            <Text style={styles.syncStatusText}>设置同步成功</Text>
+          </View>
+        )}
+        
+        {syncStatus === 'failed' && syncError && (
+          <View style={[styles.syncStatusContainer, styles.syncStatusError]}>
+            <Text style={styles.syncStatusText}>同步失败: {syncError}</Text>
+            <TouchableOpacity onPress={() => dispatch(resetSyncStatus())}>
+              <Text style={styles.retryButton}>重试</Text>
+            </TouchableOpacity>
+          </View>
+        )}
         
         <NotificationSettingItem
           title="启用通知"
@@ -634,4 +657,29 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.light.textSecondary,
   },
-});
+  syncStatusContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: Colors.light.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.light.border,
+  },
+  syncStatusSuccess: {
+    backgroundColor: '#e8f5e8',
+  },
+  syncStatusError: {
+    backgroundColor: '#ffebee',
+  },
+  syncStatusText: {
+    fontSize: 14,
+    color: Colors.light.text,
+  },
+  retryButton: {
+    fontSize: 14,
+    color: Colors.primary,
+    fontWeight: '500',
+  },
+};

@@ -8,7 +8,7 @@
 
 - **客户端**：React Native 应用，负责用户界面展示和通知设置管理
 - **服务端**：Express.js 服务，提供通知配置管理和REST API
-- **存储**：JSON文件存储（当前），计划迁移到Redis或SQLite
+- **存储**：SQLite存储（已迁移），用于存储全局配置和用户偏好
 - **共享类型**：TypeScript类型定义，确保前后端类型一致性
 
 ### 1.2 组件关系
@@ -18,12 +18,13 @@ flowchart TD
     A[客户端应用] -->|API调用| B[通知服务API]
     B -->|配置管理| C[NotificationConfigManager]
     B -->|用户偏好管理| D[用户偏好存储]
-    C -->|读写| E[全局配置文件]
-    D -->|读写| F[用户偏好文件]
+    C -->|读写| E[SQLite数据库]
+    D -->|读写| E
     A -->|状态管理| G[Redux Settings Slice]
     A -->|API封装| H[NotificationService]
     G -->|同步| H
     H -->|调用| B
+    G -->|获取配置| H
 ```
 
 ## 2. 核心功能
@@ -54,11 +55,12 @@ flowchart TD
 
 **NotificationService** 封装了与服务端的通信，提供以下方法：
 
-- `getNotificationConfig()` - 获取全局配置
-- `updateNotificationConfig(config)` - 更新全局配置
+- `getServerConfig()` - 获取全局配置
+- `updateServerConfig(config)` - 更新全局配置
 - `getUserPreferences()` - 获取用户偏好
 - `updateUserPreferences(preferences)` - 更新用户偏好
 - `syncNotificationSettings(settings)` - 同步客户端设置到服务端
+- `fetchServerNotificationConfig()` - 从服务端获取最新的通知配置和用户偏好
 
 ### 2.4 状态管理
 
@@ -67,6 +69,10 @@ flowchart TD
 - 通知总开关
 - 各类型通知开关（mention、error、system等）
 - 通知同步状态
+
+**异步操作**：
+- `syncNotificationSettings` - 同步客户端设置到服务端
+- `fetchServerNotificationConfig` - 从服务端获取最新的通知配置和用户偏好
 
 ## 3. 数据结构
 
@@ -153,19 +159,39 @@ interface UserNotificationPreferences {
 
 ### 5.1 当前实现
 
-- **全局配置**：存储在 `server/storage/notification-config.json`
-- **用户偏好**：存储在 `server/storage/user-notification-preferences.json`，以设备ID为键
+- **全局配置**：存储在SQLite数据库的 `global_notification_config` 表中
+- **用户偏好**：存储在SQLite数据库的 `user_notification_preferences` 表中，以设备ID为键
 
-### 5.2 改进计划
+### 5.2 数据库结构
 
-计划将用户偏好从JSON文件迁移到Redis或SQLite：
+**global_notification_config 表**：
+- `id`：INTEGER PRIMARY KEY DEFAULT 1（单例表）
+- `config`：TEXT NOT NULL（存储配置的JSON字符串）
+- `lastUpdated`：INTEGER NOT NULL（时间戳）
 
-- **Redis**：使用哈希表存储，键为 `notification:user:{deviceId}`
-- **SQLite**：创建 `user_notification_preferences` 表，包含 deviceId、preferences、lastUpdated 字段
+**user_notification_preferences 表**：
+- `deviceId`：TEXT PRIMARY KEY
+- `preferences`：TEXT NOT NULL（存储偏好的JSON字符串）
+- `lastUpdated`：INTEGER NOT NULL（时间戳）
 
 ## 6. 错误处理
 
-### 6.1 服务端错误
+### 6.1 统一错误处理机制
+
+#### 服务端错误
+
+服务端使用统一的错误处理机制，返回标准化的错误响应：
+
+```json
+{
+  "success": false,
+  "error": "错误消息",
+  "code": 错误码,
+  "details": 详细信息,
+  "timestamp": "2026-04-15T12:00:00Z",
+  "path": "/api/notification/config"
+}
+```
 
 | 错误码 | 描述 | HTTP状态码 |
 |--------|------|------------|
@@ -175,13 +201,26 @@ interface UserNotificationPreferences {
 | 500 | 配置加载失败 | 500 |
 | 500 | 配置保存失败 | 500 |
 
-### 6.2 客户端错误
+#### 客户端错误
 
-客户端错误处理策略：
+客户端使用统一的错误处理工具，处理以下错误类型：
 
-- 网络错误：显示网络连接失败提示
-- 业务错误：根据错误码显示相应提示
-- 未知错误：显示通用错误提示
+- **网络错误**：显示网络连接失败提示
+- **认证错误**：显示认证失败提示
+- **验证错误**：显示数据验证失败提示
+- **超时错误**：显示请求超时提示
+- **未知错误**：显示通用错误提示
+
+客户端错误响应格式：
+
+```typescript
+interface ErrorDetails {
+  code: string;
+  message: string;
+  details?: Record<string, unknown>;
+  timestamp: number;
+}
+```
 
 ## 7. 测试策略
 
@@ -235,7 +274,8 @@ interface UserNotificationPreferences {
 |------|------|----------|
 | 1.0 | 2026-03-29 | 初始版本，包含基本通知功能 |
 | 1.1 | 2026-04-01 | 添加集成测试，改进错误处理 |
-| 1.2 | 2026-04-15 | 迁移到Redis存储，添加配置校验 |
+| 1.2 | 2026-04-15 | 迁移到SQLite存储，添加配置校验 |
+| 1.3 | 2026-04-16 | 统一错误处理机制，完善同步逻辑，更新文档 |
 
 ## 13. 使用示例
 

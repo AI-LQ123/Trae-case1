@@ -1,44 +1,12 @@
 import { Router, Request, Response } from 'express';
 import { NotificationConfigManager } from '../../services/notification/config';
 import { UserNotificationPreferences, NotificationConfig } from '../../../../shared/types/notification';
-import * as fs from 'fs';
-import * as path from 'path';
+import { sqliteService } from '../../services/db/sqliteService';
+import { notificationConfigSchema, userPreferencesSchema } from '../../schemas/notificationSchema';
+import { AppError, ErrorCode, createErrorResponse } from '../../utils/errorHandler';
 
 const router = Router();
 const notificationConfigManager = new NotificationConfigManager();
-const userPreferencesPath = path.join(__dirname, '../../../../storage/user-notification-preferences.json');
-
-// 确保存储目录存在
-const ensureStorageDir = () => {
-  const dir = path.dirname(userPreferencesPath);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-};
-
-// 加载用户偏好
-const loadUserPreferences = (): Record<string, UserNotificationPreferences> => {
-  ensureStorageDir();
-  try {
-    if (fs.existsSync(userPreferencesPath)) {
-      const data = fs.readFileSync(userPreferencesPath, 'utf-8');
-      return JSON.parse(data);
-    }
-  } catch (error) {
-    console.warn('Failed to load user preferences:', error);
-  }
-  return {};
-};
-
-// 保存用户偏好
-const saveUserPreferences = (preferences: Record<string, UserNotificationPreferences>): void => {
-  ensureStorageDir();
-  try {
-    fs.writeFileSync(userPreferencesPath, JSON.stringify(preferences, null, 2), 'utf-8');
-  } catch (error) {
-    console.warn('Failed to save user preferences:', error);
-  }
-};
 
 // 获取服务端通知配置
 router.get('/config', (req: Request, res: Response) => {
@@ -46,18 +14,37 @@ router.get('/config', (req: Request, res: Response) => {
     const config = notificationConfigManager.getConfig();
     res.json(config);
   } catch (error) {
-    res.status(500).json({ error: 'Failed to get notification config' });
+    const errorResponse = createErrorResponse(
+      new AppError('Failed to get notification config', ErrorCode.INTERNAL_ERROR, 500),
+      req.path
+    );
+    res.status(500).json(errorResponse);
   }
 });
 
 // 更新服务端通知配置
 router.put('/config', (req: Request, res: Response) => {
   try {
-    const partialConfig = req.body as Partial<NotificationConfig>;
+    const validationResult = notificationConfigSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      const errorResponse = createErrorResponse(
+        new AppError('Invalid config data', ErrorCode.BAD_REQUEST, 400, {
+          details: validationResult.error.errors
+        }),
+        req.path
+      );
+      return res.status(400).json(errorResponse);
+    }
+    
+    const partialConfig = validationResult.data as Partial<NotificationConfig>;
     notificationConfigManager.updateConfig(partialConfig);
     res.json({ success: true, config: notificationConfigManager.getConfig() });
   } catch (error) {
-    res.status(400).json({ error: 'Invalid config data' });
+    const errorResponse = createErrorResponse(
+      new AppError('Invalid config data', ErrorCode.BAD_REQUEST, 400),
+      req.path
+    );
+    res.status(400).json(errorResponse);
   }
 });
 
@@ -66,19 +53,31 @@ router.get('/user-preferences', (req: Request, res: Response) => {
   try {
     const deviceId = req.headers['x-device-id'] as string;
     if (!deviceId) {
-      return res.status(400).json({ error: 'Device ID is required' });
+      const errorResponse = createErrorResponse(
+        new AppError('Device ID is required', ErrorCode.BAD_REQUEST, 400),
+        req.path
+      );
+      return res.status(400).json(errorResponse);
     }
 
-    const preferences = loadUserPreferences();
-    const userPrefs = preferences[deviceId] || {
-      deviceId,
-      preferences: {},
-      lastUpdated: Date.now()
-    };
-
-    res.json(userPrefs);
+    const userPrefs = sqliteService.getUserPreferences(deviceId);
+    if (userPrefs) {
+      res.json(userPrefs);
+    } else {
+      const defaultPrefs = {
+        deviceId,
+        preferences: {},
+        lastUpdated: Date.now()
+      };
+      sqliteService.saveUserPreferences(deviceId, defaultPrefs.preferences);
+      res.json(defaultPrefs);
+    }
   } catch (error) {
-    res.status(500).json({ error: 'Failed to get user preferences' });
+    const errorResponse = createErrorResponse(
+      new AppError('Failed to get user preferences', ErrorCode.INTERNAL_ERROR, 500),
+      req.path
+    );
+    res.status(500).json(errorResponse);
   }
 });
 
@@ -87,25 +86,40 @@ router.put('/user-preferences', (req: Request, res: Response) => {
   try {
     const deviceId = req.headers['x-device-id'] as string;
     if (!deviceId) {
-      return res.status(400).json({ error: 'Device ID is required' });
+      const errorResponse = createErrorResponse(
+        new AppError('Device ID is required', ErrorCode.BAD_REQUEST, 400),
+        req.path
+      );
+      return res.status(400).json(errorResponse);
     }
 
-    const { preferences } = req.body as { preferences: Partial<Record<string, boolean>> };
-    if (!preferences) {
-      return res.status(400).json({ error: 'Preferences are required' });
+    const validationResult = userPreferencesSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      const errorResponse = createErrorResponse(
+        new AppError('Invalid preferences data', ErrorCode.BAD_REQUEST, 400, {
+          details: validationResult.error.errors
+        }),
+        req.path
+      );
+      return res.status(400).json(errorResponse);
     }
 
-    const allPrefs = loadUserPreferences();
-    allPrefs[deviceId] = {
+    const { preferences } = validationResult.data;
+
+    const userPrefs = {
       deviceId,
       preferences,
       lastUpdated: Date.now()
     };
 
-    saveUserPreferences(allPrefs);
-    res.json({ success: true, preferences: allPrefs[deviceId] });
+    sqliteService.saveUserPreferences(deviceId, preferences);
+    res.json({ success: true, preferences: userPrefs });
   } catch (error) {
-    res.status(400).json({ error: 'Invalid preferences data' });
+    const errorResponse = createErrorResponse(
+      new AppError('Invalid preferences data', ErrorCode.BAD_REQUEST, 400),
+      req.path
+    );
+    res.status(400).json(errorResponse);
   }
 });
 

@@ -1,5 +1,6 @@
 import authService from '../auth/authService';
 import { NotificationConfig, UserNotificationPreferences } from '../../../shared/types/notification';
+import { handleFetchError, formatErrorForDisplay, ErrorDetails } from '../../utils/errorHandler';
 
 class NotificationService {
   private async getServerUrl(): Promise<string> {
@@ -37,7 +38,8 @@ class NotificationService {
       return await response.json();
     } catch (error) {
       console.error('Error getting server config:', error);
-      throw error;
+      const errorDetails = handleFetchError(error);
+      throw new Error(formatErrorForDisplay(errorDetails));
     }
   }
 
@@ -60,7 +62,8 @@ class NotificationService {
       return data.config;
     } catch (error) {
       console.error('Error updating server config:', error);
-      throw error;
+      const errorDetails = handleFetchError(error);
+      throw new Error(formatErrorForDisplay(errorDetails));
     }
   }
 
@@ -81,7 +84,8 @@ class NotificationService {
       return await response.json();
     } catch (error) {
       console.error('Error getting user preferences:', error);
-      throw error;
+      const errorDetails = handleFetchError(error);
+      throw new Error(formatErrorForDisplay(errorDetails));
     }
   }
 
@@ -104,11 +108,12 @@ class NotificationService {
       return data.preferences;
     } catch (error) {
       console.error('Error updating user preferences:', error);
-      throw error;
+      const errorDetails = handleFetchError(error);
+      throw new Error(formatErrorForDisplay(errorDetails));
     }
   }
 
-  async syncNotificationSettings(settings: any): Promise<void> {
+  async syncNotificationSettings(settings: any): Promise<{ config: NotificationConfig; preferences: UserNotificationPreferences }> {
     try {
       // 将客户端设置转换为服务端偏好格式
       const preferences: Partial<Record<string, boolean>> = {
@@ -123,10 +128,17 @@ class NotificationService {
         terminalOutput: settings.terminalOutput
       };
 
-      await this.updateUserPreferences(preferences);
+      // 更新用户偏好
+      const updatedPreferences = await this.updateUserPreferences(preferences);
+      
+      // 获取最新的全局配置
+      const config = await this.getServerConfig();
+      
+      return { config, preferences: updatedPreferences };
     } catch (error) {
       console.error('Error syncing notification settings:', error);
-      // 同步失败不影响客户端操作
+      const errorDetails = handleFetchError(error);
+      throw new Error(formatErrorForDisplay(errorDetails));
     }
   }
 }

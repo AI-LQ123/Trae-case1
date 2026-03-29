@@ -1,5 +1,3 @@
-import * as fs from 'fs';
-import * as path from 'path';
 import {
   NotificationType,
   NotificationChannel,
@@ -7,6 +5,7 @@ import {
   NotificationTypeConfig,
   NotificationConfig
 } from '../../../../shared/types/notification';
+import { sqliteService } from '../db/sqliteService';
 
 export const defaultNotificationConfig: NotificationConfig = {
   general: {
@@ -73,15 +72,9 @@ export const defaultNotificationConfig: NotificationConfig = {
 
 export class NotificationConfigManager {
   private config: NotificationConfig;
-  private configPath?: string;
   private listeners: Array<(config: NotificationConfig) => void> = [];
 
-  constructor(initialConfig?: Partial<NotificationConfig>, configPath?: string) {
-    this.configPath = configPath;
-    
-    // 确保配置文件存在
-    this.ensureConfigFile();
-    
+  constructor(initialConfig?: Partial<NotificationConfig>) {
     const loadedConfig = this.loadConfig();
     this.config = {
       ...defaultNotificationConfig,
@@ -106,55 +99,22 @@ export class NotificationConfigManager {
   }
 
   private loadConfig(): Partial<NotificationConfig> | null {
-    if (!this.configPath) {
-      return null;
-    }
-
     try {
-      if (fs.existsSync(this.configPath)) {
-        const data = fs.readFileSync(this.configPath, 'utf-8');
-        return JSON.parse(data);
+      const result = sqliteService.getGlobalConfig();
+      if (result) {
+        return result.config;
       }
     } catch (error) {
-      console.error('Failed to load notification config:', error);
+      console.error('Failed to load notification config from SQLite:', error);
     }
     return null;
   }
 
   private saveConfig(): void {
-    if (!this.configPath) {
-      return;
-    }
-
     try {
-      const dir = path.dirname(this.configPath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      
-      fs.writeFileSync(this.configPath, JSON.stringify(this.config, null, 2), 'utf-8');
+      sqliteService.saveGlobalConfig(this.config);
     } catch (error) {
-      console.error('Failed to save notification config:', error);
-    }
-  }
-
-  private ensureConfigFile(): void {
-    if (!this.configPath) {
-      return;
-    }
-
-    try {
-      const dir = path.dirname(this.configPath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-
-      if (!fs.existsSync(this.configPath)) {
-        fs.writeFileSync(this.configPath, JSON.stringify(defaultNotificationConfig, null, 2), 'utf-8');
-        console.log('Created default notification config file:', this.configPath);
-      }
-    } catch (error) {
-      console.error('Failed to ensure config file:', error);
+      console.error('Failed to save notification config to SQLite:', error);
     }
   }
 
