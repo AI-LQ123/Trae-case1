@@ -17,6 +17,7 @@ describe('WebSocketServer', () => {
       connectionTimeout: 5000,
       maxConnections: 5,
       maxMessageSize: 1024, // 1KB for testing
+      requireAuth: false, // 测试环境不需要认证
     });
 
     httpServer.listen(8080, () => {

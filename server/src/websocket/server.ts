@@ -35,6 +35,7 @@ export class WebSocketServer {
       connectionTimeout: 60000,
       maxConnections: 100,
       maxMessageSize: 1024 * 1024, // 1MB default
+      requireAuth: true,
       ...envConfig,
       ...config,
     });
@@ -124,15 +125,17 @@ export class WebSocketServer {
         metadata: { clientIp },
       });
 
-      // 检查WebSocket连接的token验证
-      const token = this.extractTokenFromRequest(req);
-      if (!token) {
-        logger.warn('WebSocket connection without token', {
-          context: 'WebSocketServer',
-          metadata: { clientIp },
-        });
-        ws.close(4001, 'Missing authentication token');
-        return;
+      // 检查WebSocket连接的token验证（如果requireAuth为true）
+      if (this.config.requireAuth) {
+        const token = this.extractTokenFromRequest(req);
+        if (!token) {
+          logger.warn('WebSocket connection without token', {
+            context: 'WebSocketServer',
+            metadata: { clientIp },
+          });
+          ws.close(4001, 'Missing authentication token');
+          return;
+        }
       }
 
       if (this.connectionManager.size() >= this.config.maxConnections!) {

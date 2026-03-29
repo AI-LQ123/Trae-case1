@@ -11,7 +11,7 @@ import { ReconnectionManager } from './reconnection';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export interface WebSocketMessage {
-  type: 'command' | 'event' | 'ping' | 'pong';
+  type: 'command' | 'event' | 'ping' | 'pong' | 'notification';
   category?: string;
   id: string;
   timestamp: number;

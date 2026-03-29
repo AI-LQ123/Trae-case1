@@ -57,6 +57,12 @@ const taskSlice = createSlice({
     setLoading: (state, action: PayloadAction<boolean>) => {
       state.loading = action.payload;
     },
+    updateTaskInHistory: (state, action: PayloadAction<Partial<Task> & { id: string }>) => {
+      const historyTask = state.taskHistory.find(t => t.id === action.payload.id);
+      if (historyTask) {
+        Object.assign(historyTask, action.payload);
+      }
+    },
   },
 });
 

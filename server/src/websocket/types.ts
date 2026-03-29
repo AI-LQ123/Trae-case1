@@ -7,6 +7,7 @@ export interface WebSocketServerConfig {
   connectionTimeout?: number;
   maxConnections?: number;
   maxMessageSize?: number; // 最大消息大小（字节），默认1MB
+  requireAuth?: boolean; // 是否要求连接时认证，默认为true
 }
 
 // 消息处理结果接口
