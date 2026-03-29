@@ -9,8 +9,19 @@ interface PairingSession {
   paired: boolean;
 }
 
+interface DeviceInfo {
+  id: string;
+  name: string;
+  platform: string;
+  version: string;
+  lastSeen: number;
+  pairedAt: number;
+  permissionLevel: number;
+}
+
 class PairingService {
   private sessions: Map<string, PairingSession> = new Map();
+  private devices: Map<string, DeviceInfo> = new Map();
 
   generatePairingCode(): PairingSession {
     const code = crypto.randomBytes(3).toString('hex').toUpperCase();
@@ -28,7 +39,6 @@ class PairingService {
 
     this.sessions.set(id, session);
 
-    // 清理过期会话
     this.cleanupExpiredSessions();
 
     return session;
@@ -46,11 +56,23 @@ class PairingService {
     return null;
   }
 
-  completePairing(sessionId: string, deviceId: string): boolean {
+  completePairing(sessionId: string, deviceId: string, deviceName: string, platform: string, version: string): boolean {
     const session = this.sessions.get(sessionId);
     if (session && !session.paired && session.expiresAt > new Date()) {
       session.paired = true;
       session.deviceId = deviceId;
+
+      const device: DeviceInfo = {
+        id: deviceId,
+        name: deviceName,
+        platform,
+        version,
+        lastSeen: Date.now(),
+        pairedAt: Date.now(),
+        permissionLevel: 2
+      };
+
+      this.devices.set(deviceId, device);
       return true;
     }
     return false;
@@ -68,6 +90,47 @@ class PairingService {
   getSessionById(sessionId: string): PairingSession | null {
     this.cleanupExpiredSessions();
     return this.sessions.get(sessionId) || null;
+  }
+
+  getDevice(deviceId: string): DeviceInfo | null {
+    return this.devices.get(deviceId) || null;
+  }
+
+  getAllDevices(): DeviceInfo[] {
+    return Array.from(this.devices.values());
+  }
+
+  updateDeviceLastSeen(deviceId: string): void {
+    const device = this.devices.get(deviceId);
+    if (device) {
+      device.lastSeen = Date.now();
+    }
+  }
+
+  removeDevice(deviceId: string): boolean {
+    return this.devices.delete(deviceId);
+  }
+
+  updateDeviceName(deviceId: string, name: string): boolean {
+    const device = this.devices.get(deviceId);
+    if (device) {
+      device.name = name;
+      return true;
+    }
+    return false;
+  }
+
+  updateDevicePermission(deviceId: string, permissionLevel: number): boolean {
+    const device = this.devices.get(deviceId);
+    if (device) {
+      device.permissionLevel = permissionLevel;
+      return true;
+    }
+    return false;
+  }
+
+  isDevicePaired(deviceId: string): boolean {
+    return this.devices.has(deviceId);
   }
 }
 

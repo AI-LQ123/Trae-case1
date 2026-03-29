@@ -15,6 +15,7 @@ import { RootState } from '../state/store';
 import { updateNotificationSettings, NotificationSettings } from '../state/slices/settingsSlice';
 import { Colors } from '../constants/colors';
 import authService from '../services/auth/authService';
+import notificationService from '../services/notification/notificationService';
 
 interface PairedServer {
   id: string;
@@ -32,6 +33,7 @@ interface NotificationSettingItemProps {
   description: string;
   value: boolean;
   onValueChange: (value: boolean) => void;
+  disabled?: boolean;
 }
 
 const NotificationSettingItem: React.FC<NotificationSettingItemProps> = ({
@@ -39,17 +41,19 @@ const NotificationSettingItem: React.FC<NotificationSettingItemProps> = ({
   description,
   value,
   onValueChange,
+  disabled = false,
 }) => (
   <View style={styles.settingItem}>
     <View style={styles.settingTextContainer}>
-      <Text style={styles.settingTitle}>{title}</Text>
-      <Text style={styles.settingDescription}>{description}</Text>
+      <Text style={[styles.settingTitle, disabled && styles.disabledText]}>{title}</Text>
+      <Text style={[styles.settingDescription, disabled && styles.disabledText]}>{description}</Text>
     </View>
     <Switch
       value={value}
       onValueChange={onValueChange}
       trackColor={{ false: Colors.light.border, true: Colors.primary }}
       thumbColor="#FFFFFF"
+      disabled={disabled}
     />
   </View>
 );
@@ -82,8 +86,12 @@ export const SettingsScreen: React.FC = () => {
     setActiveServer(active);
   };
 
-  const handleUpdateNotification = (key: keyof NotificationSettings, value: boolean) => {
+  const handleUpdateNotification = async (key: keyof NotificationSettings, value: boolean) => {
     dispatch(updateNotificationSettings({ [key]: value }));
+    
+    // 同步到服务端
+    const newSettings = { ...notifications, [key]: value };
+    await notificationService.syncNotificationSettings(newSettings);
   };
 
   const formatPairedAt = (timestamp: number): string => {
@@ -258,8 +266,6 @@ export const SettingsScreen: React.FC = () => {
           onValueChange={(value) => handleUpdateNotification('enabled', value)}
         />
 
-        {notifications.enabled && (
-          <>
             <SectionHeader title="通知类型设置" />
             
             <NotificationSettingItem
@@ -267,6 +273,7 @@ export const SettingsScreen: React.FC = () => {
               description="当有信息提示时发送通知"
               value={notifications.info}
               onValueChange={(value) => handleUpdateNotification('info', value)}
+              disabled={!notifications.enabled}
             />
 
             <NotificationSettingItem
@@ -274,6 +281,7 @@ export const SettingsScreen: React.FC = () => {
               description="当操作成功时发送通知"
               value={notifications.success}
               onValueChange={(value) => handleUpdateNotification('success', value)}
+              disabled={!notifications.enabled}
             />
 
             <NotificationSettingItem
@@ -281,6 +289,7 @@ export const SettingsScreen: React.FC = () => {
               description="当有警告时发送通知"
               value={notifications.warning}
               onValueChange={(value) => handleUpdateNotification('warning', value)}
+              disabled={!notifications.enabled}
             />
 
             <NotificationSettingItem
@@ -288,6 +297,7 @@ export const SettingsScreen: React.FC = () => {
               description="当发生错误时发送通知"
               value={notifications.error}
               onValueChange={(value) => handleUpdateNotification('error', value)}
+              disabled={!notifications.enabled}
             />
 
             <NotificationSettingItem
@@ -295,6 +305,7 @@ export const SettingsScreen: React.FC = () => {
               description="当任务成功完成时发送通知"
               value={notifications.taskCompleted}
               onValueChange={(value) => handleUpdateNotification('taskCompleted', value)}
+              disabled={!notifications.enabled}
             />
 
             <NotificationSettingItem
@@ -302,13 +313,15 @@ export const SettingsScreen: React.FC = () => {
               description="当任务执行失败时发送通知"
               value={notifications.taskFailed}
               onValueChange={(value) => handleUpdateNotification('taskFailed', value)}
+              disabled={!notifications.enabled}
             />
 
             <NotificationSettingItem
               title="提及通知"
-              description="当被提及时发送通知"
+              description="当有人在对话或评论中@您时"
               value={notifications.mention}
               onValueChange={(value) => handleUpdateNotification('mention', value)}
+              disabled={!notifications.enabled}
             />
 
             <NotificationSettingItem
@@ -316,6 +329,7 @@ export const SettingsScreen: React.FC = () => {
               description="当文件发生变化时发送通知"
               value={notifications.fileChange}
               onValueChange={(value) => handleUpdateNotification('fileChange', value)}
+              disabled={!notifications.enabled}
             />
 
             <NotificationSettingItem
@@ -323,9 +337,8 @@ export const SettingsScreen: React.FC = () => {
               description="当终端有输出时发送通知"
               value={notifications.terminalOutput}
               onValueChange={(value) => handleUpdateNotification('terminalOutput', value)}
+              disabled={!notifications.enabled}
             />
-          </>
-        )}
 
         <SectionHeader title="账号管理" />
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
@@ -397,6 +410,9 @@ const styles = StyleSheet.create({
   settingDescription: {
     fontSize: 14,
     color: Colors.light.textSecondary,
+  },
+  disabledText: {
+    opacity: 0.5,
   },
   currentServerCard: {
     backgroundColor: '#e8f4ff',

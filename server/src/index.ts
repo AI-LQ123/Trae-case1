@@ -8,6 +8,7 @@ import tokenManager from './services/auth/tokenManager';
 import { authMiddleware, AuthenticatedRequest } from './middleware/authMiddleware';
 import projectRoutes from './api/routes/project';
 import fileRoutes from './api/routes/file';
+import notificationRouter from './api/routes/notification';
 
 const app = express();
 const server = createServer(app);
@@ -41,7 +42,7 @@ app.get('/health', (req, res) => {
 
 // Auth API routes
 app.post('/api/auth/pair', authLimiter, (req, res) => {
-  const { code, deviceId, deviceName } = req.body;
+  const { code, deviceId, deviceName, platform, version } = req.body;
   
   if (!code || !deviceId) {
     return res.status(400).json({
@@ -60,7 +61,13 @@ app.post('/api/auth/pair', authLimiter, (req, res) => {
     });
   }
 
-  const success = pairingService.completePairing(session.id, deviceId);
+  const success = pairingService.completePairing(
+    session.id, 
+    deviceId, 
+    deviceName || 'Unknown Device', 
+    platform || 'Unknown', 
+    version || '1.0.0'
+  );
   if (!success) {
     return res.status(400).json({
       success: false,
@@ -158,6 +165,7 @@ app.post('/api/auth/logout', authMiddleware, (req, res) => {
 // Project and File API routes
 app.use('/api/project', projectRoutes);
 app.use('/api/file', fileRoutes);
+app.use('/api/notification', notificationRouter);
 
 const wss = new WebSocketServer(server);
 

@@ -12,11 +12,24 @@ interface PairingRequest {
   code: string;
   deviceId: string;
   deviceName: string;
+  platform: string;
+  version: string;
 }
 
 interface RefreshTokenResponse {
   token: string;
   refreshToken: string;
+}
+
+interface PairedServer {
+  id: string;
+  serverUrl: string;
+  serverName?: string;
+  token: string;
+  refreshToken: string;
+  deviceId: string;
+  pairedAt: number;
+  isActive: boolean;
 }
 
 export class AuthError extends Error {
@@ -36,6 +49,8 @@ class AuthService {
   private readonly REFRESH_TOKEN_KEY = 'trae_refresh_token';
   private readonly DEVICE_ID_KEY = 'trae_device_id';
   private readonly SERVER_URL_KEY = 'trae_server_url';
+  private readonly PAIRED_SERVERS_KEY = 'trae_paired_servers';
+  private readonly ACTIVE_SERVER_ID_KEY = 'trae_active_server_id';
 
   async generateDeviceId(): Promise<string> {
     let deviceId = await AsyncStorage.getItem(this.DEVICE_ID_KEY);
@@ -90,11 +105,15 @@ class AuthService {
   async pairWithServer(serverUrl: string, pairingCode: string): Promise<AuthResponse> {
     const deviceId = await this.generateDeviceId();
     const deviceName = await this.getDeviceName();
+    const platform = Platform.OS;
+    const version = String(Platform.Version);
 
     const pairingRequest: PairingRequest = {
       code: pairingCode,
       deviceId,
-      deviceName
+      deviceName,
+      platform,
+      version
     };
 
     try {
@@ -118,6 +137,21 @@ class AuthService {
       const data = await response.json();
       await this.saveToken(data.token, data.refreshToken);
       await this.saveServerUrl(serverUrl);
+      
+      const serverId = `server_${Date.now()}`;
+      const newServer: PairedServer = {
+        id: serverId,
+        serverUrl,
+        token: data.token,
+        refreshToken: data.refreshToken,
+        deviceId,
+        pairedAt: Date.now(),
+        isActive: true
+      };
+      
+      await this.addPairedServer(newServer);
+      await this.setActiveServer(serverId);
+      
       return data;
     } catch (error) {
       if (error instanceof AuthError) {
@@ -157,6 +191,14 @@ class AuthService {
 
       const data = await response.json();
       await this.saveToken(data.token, data.refreshToken);
+      
+      const activeServer = await this.getActiveServer();
+      if (activeServer) {
+        activeServer.token = data.token;
+        activeServer.refreshToken = data.refreshToken;
+        await this.updatePairedServer(activeServer);
+      }
+      
       return data;
     } catch (error) {
       if (error instanceof AuthError) {
@@ -184,8 +226,86 @@ class AuthService {
     }
   }
 
+  async getPairedServers(): Promise<PairedServer[]> {
+    try {
+      const serversJson = await AsyncStorage.getItem(this.PAIRED_SERVERS_KEY);
+      return serversJson ? JSON.parse(serversJson) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  async addPairedServer(server: PairedServer): Promise<void> {
+    const servers = await this.getPairedServers();
+    servers.push(server);
+    await AsyncStorage.setItem(this.PAIRED_SERVERS_KEY, JSON.stringify(servers));
+  }
+
+  async updatePairedServer(updatedServer: PairedServer): Promise<void> {
+    const servers = await this.getPairedServers();
+    const index = servers.findIndex(s => s.id === updatedServer.id);
+    if (index !== -1) {
+      servers[index] = updatedServer;
+      await AsyncStorage.setItem(this.PAIRED_SERVERS_KEY, JSON.stringify(servers));
+    }
+  }
+
+  async removePairedServer(serverId: string): Promise<void> {
+    const servers = await this.getPairedServers();
+    const filteredServers = servers.filter(s => s.id !== serverId);
+    await AsyncStorage.setItem(this.PAIRED_SERVERS_KEY, JSON.stringify(filteredServers));
+    
+    const activeServerId = await this.getActiveServerId();
+    if (activeServerId === serverId && filteredServers.length > 0) {
+      await this.setActiveServer(filteredServers[0].id);
+    } else if (filteredServers.length === 0) {
+      await this.removeActiveServer();
+      await this.removeToken();
+      await AsyncStorage.removeItem(this.SERVER_URL_KEY);
+    }
+  }
+
+  async getActiveServerId(): Promise<string | null> {
+    return await AsyncStorage.getItem(this.ACTIVE_SERVER_ID_KEY);
+  }
+
+  async getActiveServer(): Promise<PairedServer | null> {
+    const activeServerId = await this.getActiveServerId();
+    if (!activeServerId) return null;
+    
+    const servers = await this.getPairedServers();
+    return servers.find(s => s.id === activeServerId) || null;
+  }
+
+  async setActiveServer(serverId: string): Promise<void> {
+    const servers = await this.getPairedServers();
+    const server = servers.find(s => s.id === serverId);
+    
+    if (server) {
+      await AsyncStorage.setItem(this.ACTIVE_SERVER_ID_KEY, serverId);
+      await this.saveToken(server.token, server.refreshToken);
+      await this.saveServerUrl(server.serverUrl);
+      
+      for (const s of servers) {
+        s.isActive = s.id === serverId;
+      }
+      await AsyncStorage.setItem(this.PAIRED_SERVERS_KEY, JSON.stringify(servers));
+    }
+  }
+
+  async removeActiveServer(): Promise<void> {
+    await AsyncStorage.removeItem(this.ACTIVE_SERVER_ID_KEY);
+  }
+
   async logout(): Promise<void> {
     await this.removeToken();
+  }
+
+  async logoutFromAll(): Promise<void> {
+    await this.removeToken();
+    await AsyncStorage.removeItem(this.SERVER_URL_KEY);
+    await AsyncStorage.removeItem(this.PAIRED_SERVERS_KEY);
+    await AsyncStorage.removeItem(this.ACTIVE_SERVER_ID_KEY);
   }
 }
 
