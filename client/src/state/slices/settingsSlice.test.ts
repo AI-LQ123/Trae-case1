@@ -1,7 +1,7 @@
 import { configureStore } from '@reduxjs/toolkit';
+import { NotificationSettings } from '../../../../shared/types/notification';
 import settingsReducer, { 
   updateNotificationSettings, 
-  NotificationSettings,
   syncNotificationSettings,
   fetchServerNotificationConfig
 } from './settingsSlice';

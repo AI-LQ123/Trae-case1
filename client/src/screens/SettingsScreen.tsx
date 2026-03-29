@@ -7,15 +7,28 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
-  FlatList
+  FlatList,
+  TextInput
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
 import { RootState } from '../state/store';
-import { updateNotificationSettings, NotificationSettings, syncNotificationSettings, resetSyncStatus } from '../state/slices/settingsSlice';
+import {
+  updateNotificationSettings,
+  syncNotificationSettings,
+  resetSyncStatus,
+  setTheme,
+  setFontSize,
+  updateConnectionSettings,
+  ConnectionSettings,
+  addQuickCommand,
+  removeQuickCommand,
+  updateQuickCommand,
+  QuickCommand
+} from '../state/slices/settingsSlice';
+import { NotificationSettings } from '../../../shared/types/notification';
 import { Colors } from '../constants/colors';
 import authService from '../services/auth/authService';
-import notificationService from '../services/notification/notificationService';
 
 interface PairedServer {
   id: string;
@@ -69,14 +82,31 @@ const SectionHeader: React.FC<SectionHeaderProps> = ({ title }) => (
   </View>
 );
 
+interface QuickCommandFormData {
+  id?: string;
+  name: string;
+  command: string;
+  category: 'terminal' | 'ai';
+}
+
 export const SettingsScreen: React.FC = () => {
   const dispatch = useDispatch();
   const navigation = useNavigation<any>();
   const notifications = useSelector((state: RootState) => state.settings.notifications);
   const syncStatus = useSelector((state: RootState) => state.settings.syncStatus);
   const syncError = useSelector((state: RootState) => state.settings.syncError);
+  const theme = useSelector((state: RootState) => state.settings.theme);
+  const fontSize = useSelector((state: RootState) => state.settings.fontSize);
+  const connection = useSelector((state: RootState) => state.settings.connection);
+  const quickCommands = useSelector((state: RootState) => state.settings.quickCommands);
   const [pairedServers, setPairedServers] = useState<PairedServer[]>([]);
   const [activeServer, setActiveServer] = useState<PairedServer | null>(null);
+  const [showQuickCommandForm, setShowQuickCommandForm] = useState(false);
+  const [editingQuickCommand, setEditingQuickCommand] = useState<QuickCommandFormData>({
+    name: '',
+    command: '',
+    category: 'terminal'
+  });
 
   useEffect(() => {
     loadData();
@@ -84,11 +114,16 @@ export const SettingsScreen: React.FC = () => {
 
   const checkServerConnection = async (serverUrl: string): Promise<'online' | 'offline' | 'checking'> => {
     try {
-      // 发送简单的请求来检查服务器连接
+      // 发送简单的请求来检查服务器连接，使用 AbortController 实现超时
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      
       const response = await fetch(`${serverUrl}/api/auth/validate`, {
         method: 'GET',
-        timeout: 5000 // 5秒超时
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId);
       return response.ok ? 'online' : 'offline';
     } catch (error) {
       return 'offline';
@@ -216,6 +251,63 @@ export const SettingsScreen: React.FC = () => {
     );
   };
 
+  const handleThemeChange = (newTheme: 'light' | 'dark' | 'system') => {
+    dispatch(setTheme(newTheme));
+  };
+
+  const handleFontSizeChange = (newSize: number) => {
+    dispatch(setFontSize(newSize));
+  };
+
+  const handleConnectionSettingChange = (key: keyof ConnectionSettings, value: any) => {
+    dispatch(updateConnectionSettings({ [key]: value }));
+  };
+
+  const handleAddQuickCommand = () => {
+    setEditingQuickCommand({ name: '', command: '', category: 'terminal' });
+    setShowQuickCommandForm(true);
+  };
+
+  const handleEditQuickCommand = (command: QuickCommand) => {
+    setEditingQuickCommand({ ...command });
+    setShowQuickCommandForm(true);
+  };
+
+  const handleSaveQuickCommand = () => {
+    if (!editingQuickCommand.name.trim() || !editingQuickCommand.command.trim()) {
+      Alert.alert('错误', '名称和命令不能为空');
+      return;
+    }
+
+    if (editingQuickCommand.id) {
+      dispatch(updateQuickCommand(editingQuickCommand as QuickCommand));
+    } else {
+      dispatch(addQuickCommand({
+        ...editingQuickCommand,
+        id: Date.now().toString()
+      } as QuickCommand));
+    }
+
+    setShowQuickCommandForm(false);
+  };
+
+  const handleDeleteQuickCommand = (commandId: string) => {
+    Alert.alert(
+      '确认删除',
+      '确定要删除这个快捷指令吗？',
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '删除',
+          style: 'destructive',
+          onPress: () => {
+            dispatch(removeQuickCommand(commandId));
+          }
+        }
+      ]
+    );
+  };
+
   const renderServerItem = ({ item }: { item: PairedServer }) => (
     <View style={styles.serverItem}>
       <View style={styles.serverInfo}>
@@ -259,6 +351,53 @@ export const SettingsScreen: React.FC = () => {
         </TouchableOpacity>
       </View>
     </View>
+  );
+
+  const renderQuickCommandItem = ({ item }: { item: QuickCommand }) => (
+    <View style={styles.quickCommandItem}>
+      <View style={styles.quickCommandInfo}>
+        <Text style={styles.quickCommandName}>{item.name}</Text>
+        <Text style={styles.quickCommandText} numberOfLines={1}>{item.command}</Text>
+        <Text style={styles.quickCommandCategory}>
+          {item.category === 'terminal' ? '终端' : 'AI'}
+        </Text>
+      </View>
+      <View style={styles.quickCommandActions}>
+        <TouchableOpacity
+          style={styles.editButton}
+          onPress={() => handleEditQuickCommand(item)}
+        >
+          <Text style={styles.editButtonText}>编辑</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.deleteButton}
+          onPress={() => handleDeleteQuickCommand(item.id)}
+        >
+          <Text style={styles.deleteButtonText}>删除</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
+  const ThemeOption = ({ value, label, selected }: { value: string; label: string; selected: boolean }) => (
+    <TouchableOpacity
+      style={[styles.themeOption, selected && styles.themeOptionSelected]}
+      onPress={() => handleThemeChange(value as 'light' | 'dark' | 'system')}
+    >
+      <Text style={[styles.themeOptionText, selected && styles.themeOptionTextSelected]}>
+        {label}
+      </Text>
+      {selected && <View style={styles.themeCheckmark} />}
+    </TouchableOpacity>
+  );
+
+  const FontSizeOption = ({ value, label }: { value: number; label: string }) => (
+    <TouchableOpacity
+      style={[styles.fontSizeOption, fontSize === value && styles.fontSizeOptionSelected]}
+      onPress={() => handleFontSizeChange(value)}
+    >
+      <Text style={[styles.fontSizeOptionText, { fontSize: value }]}>{label}</Text>
+    </TouchableOpacity>
   );
 
   return (
@@ -427,6 +566,54 @@ export const SettingsScreen: React.FC = () => {
           </Text>
         </TouchableOpacity>
 
+        <SectionHeader title="外观设置" />
+        <View style={styles.settingGroup}>
+          <Text style={styles.settingGroupTitle}>主题</Text>
+          <View style={styles.themeOptions}>
+            <ThemeOption value="light" label="浅色" selected={theme === 'light'} />
+            <ThemeOption value="dark" label="深色" selected={theme === 'dark'} />
+            <ThemeOption value="system" label="跟随系统" selected={theme === 'system'} />
+          </View>
+        </View>
+        <View style={styles.settingGroup}>
+          <Text style={styles.settingGroupTitle}>字体大小</Text>
+          <View style={styles.fontSizeOptions}>
+            <FontSizeOption value={12} label="小" />
+            <FontSizeOption value={14} label="中" />
+            <FontSizeOption value={16} label="大" />
+            <FontSizeOption value={18} label="特大" />
+          </View>
+        </View>
+
+        <SectionHeader title="连接设置" />
+        <NotificationSettingItem
+          title="自动重连"
+          description="断开连接时自动尝试重新连接"
+          value={connection.autoReconnect}
+          onValueChange={(value) => handleConnectionSettingChange('autoReconnect', value)}
+        />
+        <NotificationSettingItem
+          title="使用 SSL"
+          description="使用安全连接连接服务器"
+          value={connection.useSSL}
+          onValueChange={(value) => handleConnectionSettingChange('useSSL', value)}
+        />
+
+        <SectionHeader title="快捷指令" />
+        <FlatList
+          data={quickCommands}
+          renderItem={renderQuickCommandItem}
+          keyExtractor={(item) => item.id}
+          scrollEnabled={false}
+          style={styles.quickCommandList}
+        />
+        <TouchableOpacity
+          style={styles.addQuickCommandButton}
+          onPress={handleAddQuickCommand}
+        >
+          <Text style={styles.addQuickCommandButtonText}>添加快捷指令</Text>
+        </TouchableOpacity>
+
         <SectionHeader title="关于" />
         <View style={styles.aboutItem}>
           <Text style={styles.aboutLabel}>版本</Text>
@@ -437,6 +624,68 @@ export const SettingsScreen: React.FC = () => {
           <Text style={styles.aboutValue}>Trae Team</Text>
         </View>
       </ScrollView>
+
+      {showQuickCommandForm && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>
+              {editingQuickCommand.id ? '编辑快捷指令' : '添加快捷指令'}
+            </Text>
+            <TextInput
+              style={styles.input}
+              placeholder="指令名称"
+              value={editingQuickCommand.name}
+              onChangeText={(text) => setEditingQuickCommand({ ...editingQuickCommand, name: text })}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="命令内容"
+              value={editingQuickCommand.command}
+              onChangeText={(text) => setEditingQuickCommand({ ...editingQuickCommand, command: text })}
+            />
+            <View style={styles.categoryOptions}>
+              <TouchableOpacity
+                style={[
+                  styles.categoryOption,
+                  editingQuickCommand.category === 'terminal' && styles.categoryOptionSelected
+                ]}
+                onPress={() => setEditingQuickCommand({ ...editingQuickCommand, category: 'terminal' })}
+              >
+                <Text style={[
+                  styles.categoryOptionText,
+                  editingQuickCommand.category === 'terminal' && styles.categoryOptionTextSelected
+                ]}>终端</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.categoryOption,
+                  editingQuickCommand.category === 'ai' && styles.categoryOptionSelected
+                ]}
+                onPress={() => setEditingQuickCommand({ ...editingQuickCommand, category: 'ai' })}
+              >
+                <Text style={[
+                  styles.categoryOptionText,
+                  editingQuickCommand.category === 'ai' && styles.categoryOptionTextSelected
+                ]}>AI</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonCancel]}
+                onPress={() => setShowQuickCommandForm(false)}
+              >
+                <Text style={styles.modalButtonCancelText}>取消</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonSave]}
+                onPress={handleSaveQuickCommand}
+              >
+                <Text style={styles.modalButtonSaveText}>保存</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
     </View>
   );
 };
@@ -682,4 +931,229 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     fontWeight: '500',
   },
-};
+  settingGroup: {
+    backgroundColor: Colors.light.surface,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.light.border,
+  },
+  settingGroupTitle: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: Colors.light.text,
+    marginBottom: 12,
+  },
+  themeOptions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  themeOption: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginHorizontal: 4,
+  },
+  themeOptionSelected: {
+    borderColor: Colors.primary,
+    backgroundColor: '#e8f4ff',
+  },
+  themeOptionText: {
+    fontSize: 14,
+    color: Colors.light.text,
+  },
+  themeOptionTextSelected: {
+    color: Colors.primary,
+    fontWeight: '500',
+  },
+  themeCheckmark: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Colors.primary,
+    marginTop: 4,
+  },
+  fontSizeOptions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  fontSizeOption: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginHorizontal: 4,
+  },
+  fontSizeOptionSelected: {
+    borderColor: Colors.primary,
+    backgroundColor: '#e8f4ff',
+  },
+  fontSizeOptionText: {
+    color: Colors.light.text,
+    fontWeight: '500',
+  },
+  quickCommandList: {
+    marginBottom: 12,
+  },
+  quickCommandItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    backgroundColor: Colors.light.surface,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.light.border,
+  },
+  quickCommandInfo: {
+    flex: 1,
+    marginRight: 10,
+  },
+  quickCommandName: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: Colors.light.text,
+    marginBottom: 4,
+  },
+  quickCommandText: {
+    fontSize: 14,
+    color: Colors.light.textSecondary,
+    marginBottom: 4,
+  },
+  quickCommandCategory: {
+    fontSize: 12,
+    color: Colors.primary,
+    fontWeight: '500',
+  },
+  quickCommandActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  editButton: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginRight: 8,
+  },
+  editButtonText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  deleteButton: {
+    backgroundColor: '#ff3b30',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  deleteButtonText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  addQuickCommandButton: {
+    backgroundColor: Colors.primary,
+    marginHorizontal: 16,
+    marginVertical: 12,
+    padding: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  addQuickCommandButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  modalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: Colors.light.surface,
+    borderRadius: 12,
+    padding: 20,
+    width: '90%',
+    maxWidth: 400,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: Colors.light.text,
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
+    fontSize: 16,
+    color: Colors.light.text,
+  },
+  categoryOptions: {
+    flexDirection: 'row',
+    marginBottom: 16,
+  },
+  categoryOption: {
+    flex: 1,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginHorizontal: 4,
+  },
+  categoryOptionSelected: {
+    borderColor: Colors.primary,
+    backgroundColor: '#e8f4ff',
+  },
+  categoryOptionText: {
+    fontSize: 16,
+    color: Colors.light.text,
+  },
+  categoryOptionTextSelected: {
+    color: Colors.primary,
+    fontWeight: '500',
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  modalButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    marginLeft: 12,
+  },
+  modalButtonCancel: {
+    backgroundColor: Colors.light.border,
+  },
+  modalButtonSave: {
+    backgroundColor: Colors.primary,
+  },
+  modalButtonCancelText: {
+    color: Colors.light.text,
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  modalButtonSaveText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+});

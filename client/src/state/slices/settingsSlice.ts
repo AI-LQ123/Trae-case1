@@ -1,5 +1,5 @@
 import { createSlice, PayloadAction, createAsyncThunk } from '@reduxjs/toolkit';
-import { NotificationSettings } from '../../../shared/types/notification';
+import { NotificationSettings, NotificationConfig, UserNotificationPreferences } from '../../../../shared/types/notification';
 import notificationService from '../../services/notification/notificationService';
 
 export interface ConnectionSettings {
@@ -174,5 +174,5 @@ export const {
   resetSyncStatus,
 } = settingsSlice.actions;
 
-export { fetchServerNotificationConfig };
+export { fetchServerNotificationConfig, syncNotificationSettings };
 export default settingsSlice.reducer;

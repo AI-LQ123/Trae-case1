@@ -1,0 +1,47 @@
+[
+  {
+    "id": "task-1774765911190-1cj0b2t4f",
+    "name": "Concurrent Task 0",
+    "command": "echo \"Concurrent Test\"",
+    "status": "completed",
+    "progress": 100,
+    "createdAt": 1774765911190,
+    "updatedAt": 1774765911205,
+    "cwd": "C:\\Users\\15389\\Desktop\\Trae\\Trae手机版\\server",
+    "env": {},
+    "timeout": 30,
+    "startedAt": 1774765911193,
+    "output": "\"Concurrent Test\"\r\n",
+    "completedAt": 1774765911205
+  },
+  {
+    "id": "task-1774765911193-0cjmlz8pw",
+    "name": "Concurrent Task 1",
+    "command": "echo \"Concurrent Test\"",
+    "status": "completed",
+    "progress": 100,
+    "createdAt": 1774765911193,
+    "updatedAt": 1774765911223,
+    "cwd": "C:\\Users\\15389\\Desktop\\Trae\\Trae手机版\\server",
+    "env": {},
+    "timeout": 30,
+    "startedAt": 1774765911200,
+    "output": "\"Concurrent Test\"\r\n",
+    "completedAt": 1774765911223
+  },
+  {
+    "id": "task-1774765911200-wflaqbzd1",
+    "name": "Concurrent Task 2",
+    "command": "echo \"Concurrent Test\"",
+    "status": "completed",
+    "progress": 100,
+    "createdAt": 1774765911200,
+    "updatedAt": 1774765911223,
+    "cwd": "C:\\Users\\15389\\Desktop\\Trae\\Trae手机版\\server",
+    "env": {},
+    "timeout": 30,
+    "startedAt": 1774765911204,
+    "output": "\"Concurrent Test\"\r\n",
+    "completedAt": 1774765911223
+  }
+]
