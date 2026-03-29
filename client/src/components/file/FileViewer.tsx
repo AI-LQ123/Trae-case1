@@ -2,14 +2,13 @@ import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
-  ScrollView,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Dimensions,
 } from 'react-native';
 import { FileNode } from '../../state/slices/projectSlice';
 import { Colors } from '../../constants/colors';
+import { CodeViewer } from './CodeViewer';
 
 interface FileViewerProps {
   file: FileNode | null;
@@ -19,15 +18,13 @@ interface FileViewerProps {
   onRefresh: () => void;
 }
 
-const { width: screenWidth } = Dimensions.get('window');
-
 const getLanguageFromExtension = (filename: string): string => {
   const extension = filename.split('.').pop()?.toLowerCase() || '';
   const languageMap: Record<string, string> = {
     js: 'javascript',
-    jsx: 'jsx',
+    jsx: 'javascript',
     ts: 'typescript',
-    tsx: 'tsx',
+    tsx: 'typescript',
     json: 'json',
     md: 'markdown',
     css: 'css',
@@ -93,11 +90,6 @@ const isBinaryFile = (filename: string): boolean => {
   ];
   const extension = filename.split('.').pop()?.toLowerCase() || '';
   return binaryExtensions.includes(extension);
-};
-
-const formatLineNumbers = (content: string): string => {
-  const lines = content.split('\n');
-  return lines.map((_, index) => (index + 1).toString()).join('\n');
 };
 
 export const FileViewer: React.FC<FileViewerProps> = ({
@@ -211,31 +203,12 @@ export const FileViewer: React.FC<FileViewerProps> = ({
           </TouchableOpacity>
         </View>
       ) : (
-        <ScrollView
-          style={styles.contentContainer}
-          contentContainerStyle={styles.contentScroll}
-          horizontal={true}
-          showsHorizontalScrollIndicator={true}
-          showsVerticalScrollIndicator={true}
-        >
-          <ScrollView
-            horizontal={false}
-            showsVerticalScrollIndicator={false}
-          >
-            <View style={styles.codeContainer}>
-              {showLineNumbers && (
-                <View style={styles.lineNumbersContainer}>
-                  <Text style={[styles.lineNumbers, { fontSize }]}>
-                    {formatLineNumbers(content)}
-                  </Text>
-                </View>
-              )}
-              <View style={styles.codeContent}>
-                <Text style={[styles.codeText, { fontSize }]}>{content}</Text>
-              </View>
-            </View>
-          </ScrollView>
-        </ScrollView>
+        <CodeViewer
+          content={content}
+          language={file?.name || 'text'}
+          fontSize={fontSize}
+          showLineNumbers={showLineNumbers}
+        />
       )}
 
       <View style={styles.footer}>
@@ -333,39 +306,6 @@ const styles = StyleSheet.create({
   },
   toolbarButtonTextActive: {
     color: '#FFFFFF',
-  },
-  contentContainer: {
-    flex: 1,
-    backgroundColor: '#1E1E1E',
-  },
-  contentScroll: {
-    minWidth: screenWidth,
-  },
-  codeContainer: {
-    flexDirection: 'row',
-    minHeight: '100%',
-  },
-  lineNumbersContainer: {
-    backgroundColor: '#252526',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRightWidth: 1,
-    borderRightColor: '#3E3E42',
-  },
-  lineNumbers: {
-    color: '#858585',
-    fontFamily: 'monospace',
-    lineHeight: 20,
-  },
-  codeContent: {
-    flex: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  codeText: {
-    color: '#D4D4D4',
-    fontFamily: 'monospace',
-    lineHeight: 20,
   },
   footer: {
     paddingHorizontal: 16,
