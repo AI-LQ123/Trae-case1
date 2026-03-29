@@ -1,25 +1,11 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+import { NotificationSettings } from '../../../shared/types/notification';
 
 export interface ConnectionSettings {
   serverHost: string;
   serverPort: number;
   useSSL: boolean;
   autoReconnect: boolean;
-}
-
-export interface NotificationSettings {
-  enabled: boolean;
-  info: boolean;
-  success: boolean;
-  warning: boolean;
-  error: boolean;
-  errors: boolean;
-  taskCompleted: boolean;
-  taskFailed: boolean;
-  mention: boolean;
-  mentions: boolean;
-  fileChange: boolean;
-  terminalOutput: boolean;
 }
 
 export interface QuickCommand {
@@ -50,11 +36,9 @@ const initialState: SettingsState = {
     success: true,
     warning: true,
     error: true,
-    errors: true,
     taskCompleted: true,
     taskFailed: true,
     mention: true,
-    mentions: true,
     fileChange: true,
     terminalOutput: false,
   },
@@ -75,22 +59,7 @@ const settingsSlice = createSlice({
       state.connection = { ...state.connection, ...action.payload };
     },
     updateNotificationSettings: (state, action: PayloadAction<Partial<NotificationSettings>>) => {
-      const newSettings = { ...state.notifications, ...action.payload };
-      
-      if (action.payload.error !== undefined) {
-        newSettings.errors = action.payload.error;
-      }
-      if (action.payload.errors !== undefined) {
-        newSettings.error = action.payload.errors;
-      }
-      if (action.payload.mention !== undefined) {
-        newSettings.mentions = action.payload.mention;
-      }
-      if (action.payload.mentions !== undefined) {
-        newSettings.mention = action.payload.mentions;
-      }
-      
-      state.notifications = newSettings;
+      state.notifications = { ...state.notifications, ...action.payload };
     },
     addQuickCommand: (state, action: PayloadAction<QuickCommand>) => {
       state.quickCommands.push(action.payload);

@@ -1,40 +1,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
-
-export interface NotificationChannelConfig {
-  enabled: boolean;
-  sound: boolean;
-  vibration: boolean;
-}
-
-export interface NotificationTypeConfig {
-  enabled: boolean;
-  channel: 'default' | 'important' | 'silent';
-}
-
-export interface NotificationConfig {
-  general: {
-    enabled: boolean;
-    maxNotifications: number;
-    expirationTime: number;
-  };
-  types: {
-    info: NotificationTypeConfig;
-    success: NotificationTypeConfig;
-    warning: NotificationTypeConfig;
-    error: NotificationTypeConfig;
-    taskCompleted: NotificationTypeConfig;
-    taskFailed: NotificationTypeConfig;
-    mention: NotificationTypeConfig;
-    fileChange: NotificationTypeConfig;
-    terminalOutput: NotificationTypeConfig;
-  };
-  channels: {
-    default: NotificationChannelConfig;
-    important: NotificationChannelConfig;
-    silent: NotificationChannelConfig;
-  };
-}
+import {
+  NotificationType,
+  NotificationChannel,
+  NotificationChannelConfig,
+  NotificationTypeConfig,
+  NotificationConfig
+} from '../../../../shared/types/notification';
 
 export const defaultNotificationConfig: NotificationConfig = {
   general: {
@@ -107,6 +79,9 @@ export class NotificationConfigManager {
   constructor(initialConfig?: Partial<NotificationConfig>, configPath?: string) {
     this.configPath = configPath;
     
+    // 确保配置文件存在
+    this.ensureConfigFile();
+    
     const loadedConfig = this.loadConfig();
     this.config = {
       ...defaultNotificationConfig,
@@ -141,7 +116,7 @@ export class NotificationConfigManager {
         return JSON.parse(data);
       }
     } catch (error) {
-      console.warn('Failed to load notification config:', error);
+      console.error('Failed to load notification config:', error);
     }
     return null;
   }
@@ -159,7 +134,27 @@ export class NotificationConfigManager {
       
       fs.writeFileSync(this.configPath, JSON.stringify(this.config, null, 2), 'utf-8');
     } catch (error) {
-      console.warn('Failed to save notification config:', error);
+      console.error('Failed to save notification config:', error);
+    }
+  }
+
+  private ensureConfigFile(): void {
+    if (!this.configPath) {
+      return;
+    }
+
+    try {
+      const dir = path.dirname(this.configPath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+
+      if (!fs.existsSync(this.configPath)) {
+        fs.writeFileSync(this.configPath, JSON.stringify(defaultNotificationConfig, null, 2), 'utf-8');
+        console.log('Created default notification config file:', this.configPath);
+      }
+    } catch (error) {
+      console.error('Failed to ensure config file:', error);
     }
   }
 
@@ -189,25 +184,25 @@ export class NotificationConfigManager {
     this.notifyListeners();
   }
 
-  isTypeEnabled(type: keyof NotificationConfig['types']): boolean {
+  isTypeEnabled(type: NotificationType): boolean {
     return this.config.general.enabled && this.config.types[type]?.enabled;
   }
 
-  getChannelForType(type: keyof NotificationConfig['types']): NotificationChannelConfig {
+  getChannelForType(type: NotificationType): NotificationChannelConfig {
     const channelName = this.config.types[type]?.channel || 'default';
     return this.config.channels[channelName];
   }
 
   shouldSendNotification(
-    type: keyof NotificationConfig['types'],
-    userPreferences?: Partial<NotificationConfig['types']>
+    type: NotificationType,
+    userPreferences?: Partial<Record<NotificationType, boolean>>
   ): boolean {
     if (!this.config.general.enabled) {
       return false;
     }
 
-    if (userPreferences && userPreferences[type]?.enabled !== undefined) {
-      return userPreferences[type].enabled;
+    if (userPreferences && userPreferences[type] !== undefined) {
+      return userPreferences[type]!;
     }
 
     return this.config.types[type]?.enabled ?? false;
