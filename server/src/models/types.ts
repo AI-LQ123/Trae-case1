@@ -124,6 +124,7 @@ export interface Task {
   createdAt: number;
   startedAt?: number;
   completedAt?: number;
+  updatedAt: number; // 任务更新时间，用于同步检测
   output?: string;
   error?: string;
   cwd?: string;

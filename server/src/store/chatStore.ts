@@ -158,8 +158,8 @@ export class ChatStore {
   }
 
   // 增量查询：获取指定时间之后的消息
-  getMessagesAfter(timestamp: number): any[] {
-    const messages: any[] = [];
+  getMessagesAfter(timestamp: number): ChatMessage[] {
+    const messages: ChatMessage[] = [];
     for (const session of this.sessions.values()) {
       const filteredMessages = session.messages.filter(
         message => new Date(message.timestamp).getTime() > timestamp

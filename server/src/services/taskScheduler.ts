@@ -25,13 +25,15 @@ export class TaskScheduler {
   }
 
   async createTask(request: TaskCreateRequest): Promise<Task> {
+    const now = Date.now();
     const task: Task = {
-      id: `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      id: `task-${now}-${Math.random().toString(36).substr(2, 9)}`,
       name: request.name,
       command: request.command,
       status: 'pending',
       progress: 0,
-      createdAt: Date.now(),
+      createdAt: now,
+      updatedAt: now, // 初始化 updatedAt
       cwd: request.cwd,
       env: request.env,
       timeout: request.timeout,

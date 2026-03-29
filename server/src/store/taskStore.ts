@@ -58,6 +58,10 @@ export class TaskStore {
   }
 
   async addTask(task: Task): Promise<void> {
+    // 确保任务有 updatedAt 字段
+    if (!task.updatedAt) {
+      task.updatedAt = Date.now();
+    }
     this.tasks.set(task.id, task);
     await this.saveTasks();
   }
@@ -69,7 +73,8 @@ export class TaskStore {
   async updateTask(taskId: string, updates: Partial<Task>): Promise<Task | undefined> {
     const task = this.tasks.get(taskId);
     if (task) {
-      const updatedTask = { ...task, ...updates };
+      // 自动更新 updatedAt 字段
+      const updatedTask = { ...task, ...updates, updatedAt: Date.now() };
       this.tasks.set(taskId, updatedTask);
       await this.saveTasks();
       return updatedTask;
@@ -108,15 +113,11 @@ export class TaskStore {
       .sort((a, b) => b.createdAt - a.createdAt);
   }
 
-  // 增量查询：获取指定时间之后更新的任务
+  // 增量查询：获取指定时间之后更新的任务（使用 updatedAt 字段统一检测）
   getTasksAfter(timestamp: number): Task[] {
     return Array.from(this.tasks.values())
-      .filter(task => 
-        task.createdAt > timestamp || 
-        (task.startedAt && task.startedAt > timestamp) ||
-        (task.completedAt && task.completedAt > timestamp)
-      )
-      .sort((a, b) => b.createdAt - a.createdAt);
+      .filter(task => task.updatedAt > timestamp)
+      .sort((a, b) => b.updatedAt - a.updatedAt);
   }
 
   async cleanupOldTasks(): Promise<number> {
