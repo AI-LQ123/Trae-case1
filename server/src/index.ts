@@ -9,6 +9,7 @@ import { authMiddleware, AuthenticatedRequest } from './middleware/authMiddlewar
 import projectRoutes from './api/routes/project';
 import fileRoutes from './api/routes/file';
 import notificationRouter from './api/routes/notification';
+import { sqliteService } from './services/db/sqliteService';
 
 export const app = express();
 const server = createServer(app);
@@ -166,6 +167,8 @@ process.on('SIGTERM', () => {
   console.log('SIGTERM received, shutting down gracefully');
   server.close(() => {
     console.log('Server closed');
+    sqliteService.close();
+    console.log('SQLite connection closed');
     process.exit(0);
   });
 });
