@@ -1,6 +1,11 @@
 @echo off
 echo Starting development environment...
 
+if not exist ".env" (
+    copy .env.example .env
+    echo Created .env from example. Please edit if needed.
+)
+
 echo Starting Redis...
 docker-compose up -d redis
 

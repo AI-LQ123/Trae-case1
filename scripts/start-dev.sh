@@ -12,6 +12,11 @@ trap cleanup SIGINT SIGTERM
 
 echo "Starting development environment..."
 
+if [ ! -f .env ]; then
+    cp .env.example .env
+    echo "⚠️  Created .env from example. Please edit if needed."
+fi
+
 echo "Starting Redis..."
 docker-compose up -d redis
 
