@@ -1,19 +1,19 @@
-import Database from 'better-sqlite3';
+import Database, { Database as DatabaseType } from 'better-sqlite3';
 import * as path from 'path';
 import * as fs from 'fs';
 
 class SQLiteService {
-  private db: Database;
+  private db: DatabaseType;
 
-  constructor() {
-    const dbPath = path.join(__dirname, '../../../storage/notification.db');
-    this.ensureStorageDir();
-    this.db = new Database(dbPath);
+  constructor(customDbPath?: string) {
+    const dbPath = customDbPath || path.join(__dirname, '../../../storage/notification.db');
+    this.ensureStorageDir(dbPath);
+    this.db = Database(dbPath);
     this.initTables();
   }
 
-  private ensureStorageDir() {
-    const dir = path.join(__dirname, '../../../storage');
+  private ensureStorageDir(dbPath: string) {
+    const dir = path.dirname(dbPath);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
@@ -45,7 +45,7 @@ class SQLiteService {
     const stmt = this.db.prepare(
       'SELECT deviceId, preferences, lastUpdated FROM user_notification_preferences WHERE deviceId = ?'
     );
-    const result = stmt.get(deviceId);
+    const result = stmt.get(deviceId) as any;
     
     if (result) {
       return {
@@ -98,7 +98,7 @@ class SQLiteService {
     const stmt = this.db.prepare(
       'SELECT id, config, lastUpdated FROM global_notification_config WHERE id = 1'
     );
-    const result = stmt.get();
+    const result = stmt.get() as any;
     
     if (result) {
       return {
@@ -126,5 +126,6 @@ class SQLiteService {
 }
 
 // 导出单例实例
+export { SQLiteService };
 export const sqliteService = new SQLiteService();
 export default sqliteService;

@@ -41,23 +41,26 @@ describe('Notification API Integration Tests', () => {
     it('should update the notification config', async () => {
       const newConfig = {
         general: {
-          enabled: false
+          enabled: false,
+          maxNotifications: 50,
+          expirationTime: 86400000
         },
         channels: {
-          push: false,
-          email: true,
-          sms: true
+          default: { enabled: true, sound: true, vibration: true },
+          important: { enabled: true, sound: true, vibration: true },
+          silent: { enabled: true, sound: false, vibration: false }
         },
         types: {
-          mention: {
-            enabled: false
-          },
-          error: {
-            enabled: true
-          },
-          system: {
-            enabled: false
-          }
+          mention: { enabled: false, channel: 'important' },
+          error: { enabled: true, channel: 'important' },
+          system: { enabled: false, channel: 'default' },
+          info: { enabled: true, channel: 'default' },
+          success: { enabled: true, channel: 'default' },
+          warning: { enabled: true, channel: 'default' },
+          fileChange: { enabled: true, channel: 'default' },
+          taskCompleted: { enabled: true, channel: 'default' },
+          taskFailed: { enabled: true, channel: 'important' },
+          terminalOutput: { enabled: false, channel: 'silent' }
         }
       };
 
@@ -158,7 +161,9 @@ describe('Notification API Integration Tests', () => {
       // 2. 更新配置
       const updatedConfig = {
         general: {
-          enabled: true
+          enabled: true,
+          maxNotifications: 50,
+          expirationTime: 86400000
         }
       };
 

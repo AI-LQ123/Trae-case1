@@ -29,7 +29,7 @@ router.put('/config', (req: Request, res: Response) => {
     if (!validationResult.success) {
       const errorResponse = createErrorResponse(
         new AppError('Invalid config data', ErrorCode.BAD_REQUEST, 400, {
-          details: validationResult.error.errors
+          details: validationResult.error.issues
         }),
         req.path
       );
@@ -97,7 +97,7 @@ router.put('/user-preferences', (req: Request, res: Response) => {
     if (!validationResult.success) {
       const errorResponse = createErrorResponse(
         new AppError('Invalid preferences data', ErrorCode.BAD_REQUEST, 400, {
-          details: validationResult.error.errors
+          details: validationResult.error.issues
         }),
         req.path
       );

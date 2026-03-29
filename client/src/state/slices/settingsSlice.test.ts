@@ -1,5 +1,14 @@
 import { configureStore } from '@reduxjs/toolkit';
-import settingsReducer, { updateNotificationSettings, NotificationSettings } from './settingsSlice';
+import settingsReducer, { 
+  updateNotificationSettings, 
+  NotificationSettings,
+  syncNotificationSettings,
+  fetchServerNotificationConfig
+} from './settingsSlice';
+
+jest.mock('../../services/notification/notificationService');
+
+const mockNotificationService = require('../../services/notification/notificationService').default;
 
 describe('settingsSlice', () => {
   const store = configureStore({
@@ -9,7 +18,7 @@ describe('settingsSlice', () => {
   });
 
   beforeEach(() => {
-    store.dispatch({ type: 'RESET' });
+    jest.clearAllMocks();
   });
 
   test('should initialize with default state', () => {
@@ -24,6 +33,8 @@ describe('settingsSlice', () => {
     expect(state.notifications.mention).toBe(true);
     expect(state.notifications.fileChange).toBe(true);
     expect(state.notifications.terminalOutput).toBe(false);
+    expect(state.syncStatus).toBe('idle');
+    expect(state.syncError).toBeNull();
   });
 
   test('should update notification settings', () => {
@@ -87,5 +98,116 @@ describe('settingsSlice', () => {
     const state = store.getState().settings;
     expect(state.connection.serverHost).toBe('test.com');
     expect(state.notifications.info).toBe(false);
+  });
+
+  describe('async thunks', () => {
+    test('syncNotificationSettings pending should set loading state', async () => {
+      const settings: NotificationSettings = {
+        enabled: true,
+        info: true,
+        success: true,
+        warning: true,
+        error: true,
+        taskCompleted: true,
+        taskFailed: true,
+        mention: true,
+        fileChange: true,
+        terminalOutput: false,
+      };
+
+      mockNotificationService.syncNotificationSettings.mockImplementation(() => 
+        new Promise(() => {})
+      );
+
+      const promise = store.dispatch(syncNotificationSettings(settings));
+      let state = store.getState().settings;
+      expect(state.syncStatus).toBe('loading');
+      expect(state.syncError).toBeNull();
+      
+      promise.abort();
+    });
+
+    test('syncNotificationSettings fulfilled should update state', async () => {
+      const settings: NotificationSettings = {
+        enabled: true,
+        info: false,
+        success: true,
+        warning: true,
+        error: true,
+        taskCompleted: true,
+        taskFailed: true,
+        mention: true,
+        fileChange: true,
+        terminalOutput: false,
+      };
+
+      const mockResponse = {
+        success: true,
+        config: {
+          general: { enabled: false }
+        },
+        preferences: {
+          deviceId: 'test-device',
+          preferences: { info: false },
+          lastUpdated: Date.now()
+        }
+      };
+
+      mockNotificationService.syncNotificationSettings.mockResolvedValue(mockResponse);
+
+      await store.dispatch(syncNotificationSettings(settings));
+      const state = store.getState().settings;
+      
+      expect(state.syncStatus).toBe('succeeded');
+      expect(state.syncError).toBeNull();
+      expect(state.notifications.enabled).toBe(false);
+    });
+
+    test('syncNotificationSettings rejected should set error state', async () => {
+      const settings: NotificationSettings = {
+        enabled: true,
+        info: true,
+        success: true,
+        warning: true,
+        error: true,
+        taskCompleted: true,
+        taskFailed: true,
+        mention: true,
+        fileChange: true,
+        terminalOutput: false,
+      };
+
+      const errorMessage = 'Sync failed';
+      mockNotificationService.syncNotificationSettings.mockRejectedValue(new Error(errorMessage));
+
+      await store.dispatch(syncNotificationSettings(settings));
+      const state = store.getState().settings;
+      
+      expect(state.syncStatus).toBe('failed');
+      expect(state.syncError).toBe(errorMessage);
+    });
+
+    test('fetchServerNotificationConfig should fetch config and preferences', async () => {
+      const mockConfig = {
+        general: { enabled: true, maxNotifications: 50, expirationTime: 86400000 },
+        types: {},
+        channels: {}
+      };
+
+      const mockPreferences = {
+        deviceId: 'test-device',
+        preferences: { info: false, error: true },
+        lastUpdated: Date.now()
+      };
+
+      mockNotificationService.getServerConfig.mockResolvedValue(mockConfig);
+      mockNotificationService.getUserPreferences.mockResolvedValue(mockPreferences);
+
+      await store.dispatch(fetchServerNotificationConfig());
+      const state = store.getState().settings;
+      
+      expect(state.syncStatus).toBe('succeeded');
+      expect(state.notifications.enabled).toBe(true);
+    });
   });
 });
