@@ -57,6 +57,10 @@ const taskSlice = createSlice({
       if (task) {
         Object.assign(task, action.payload);
       }
+      const historyTask = state.taskHistory.find(t => t.id === action.payload.id);
+      if (historyTask) {
+        Object.assign(historyTask, action.payload);
+      }
     },
     removeTask: (state, action: PayloadAction<string>) => {
       const task = state.activeTasks.find(t => t.id === action.payload);
@@ -87,6 +91,7 @@ export const {
   setActiveTasks,
   addTask,
   updateTask,
+  updateTaskInHistory,
   removeTask,
   setTaskOutput,
   setTaskError,
