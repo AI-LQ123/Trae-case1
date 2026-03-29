@@ -57,6 +57,25 @@ cd server && npm install
 cd ../client && npm install
 ```
 
+### 环境配置
+
+**服务端需要设置以下环境变量：**
+
+```bash
+# Windows (PowerShell)
+$env:JWT_SECRET="your-secure-jwt-secret-key"
+$env:JWT_REFRESH_SECRET="your-secure-refresh-secret-key"
+
+# macOS/Linux (bash)
+export JWT_SECRET="your-secure-jwt-secret-key"
+export JWT_REFRESH_SECRET="your-secure-refresh-secret-key"
+```
+
+**建议：**
+- 使用强随机密钥（至少32字符）
+- 生产环境中使用环境变量管理工具
+- 不要硬编码密钥到代码中
+
 ### 启动开发服务器
 
 ```bash

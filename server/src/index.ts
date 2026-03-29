@@ -10,7 +10,7 @@ import projectRoutes from './api/routes/project';
 import fileRoutes from './api/routes/file';
 import notificationRouter from './api/routes/notification';
 
-const app = express();
+export const app = express();
 const server = createServer(app);
 
 const PORT = process.env.PORT || 3001;
@@ -107,8 +107,8 @@ app.post('/api/auth/refresh', (req, res) => {
     });
   }
 
-  const payload = tokenManager.verifyRefreshToken(refreshToken);
-  if (!payload) {
+  const result = tokenManager.refreshToken(refreshToken);
+  if (!result) {
     return res.status(401).json({
       success: false,
       error: 'Invalid or expired refresh token',
@@ -116,21 +116,9 @@ app.post('/api/auth/refresh', (req, res) => {
     });
   }
 
-  const newToken = tokenManager.generateToken({
-    deviceId: payload.deviceId,
-    userId: payload.userId,
-    role: 'user'
-  });
-
-  const newRefreshToken = tokenManager.generateRefreshToken({
-    deviceId: payload.deviceId,
-    userId: payload.userId,
-    role: 'user'
-  });
-
   res.json({
-    token: newToken,
-    refreshToken: newRefreshToken
+    token: result.token,
+    refreshToken: result.refreshToken
   });
 });
 

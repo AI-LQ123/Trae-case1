@@ -92,14 +92,13 @@ const ScanScreen: React.FC = () => {
       await authService.pairWithServer(serverUrl, pairingCode);
       setLoadingText('配对成功！');
       await loadPairedServers();
-      setTimeout(() => {
-        Alert.alert('成功', '设备配对成功！', [
-          {
-            text: '确定',
-            onPress: () => navigation.replace('Chat')
-          }
-        ]);
-      }, 500);
+      // 移除 setTimeout 延迟，直接显示成功提示
+      Alert.alert('成功', '设备配对成功！', [
+        {
+          text: '确定',
+          onPress: () => navigation.replace('Chat')
+        }
+      ]);
     } catch (err) {
       let errorMessage = '配对失败，请检查服务器地址和配对码';
       if (err instanceof AuthError) {
@@ -129,9 +128,8 @@ const ScanScreen: React.FC = () => {
     try {
       await authService.setActiveServer(server.id);
       await loadPairedServers();
-      setTimeout(() => {
-        navigation.replace('Chat');
-      }, 300);
+      // 移除 setTimeout 延迟，直接导航到聊天界面
+      navigation.replace('Chat');
     } catch (err) {
       Alert.alert('错误', '切换服务器失败');
     } finally {

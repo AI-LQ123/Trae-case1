@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 
 export interface TokenPayload {
   deviceId: string;
@@ -18,6 +19,7 @@ class TokenManager {
   private revokedTokens: Set<string> = new Set();
   private deviceBlacklist: Set<string> = new Set();
   private deviceTokens: Map<string, Set<string>> = new Map();
+  private usedRefreshTokens: Set<string> = new Set();
 
   constructor() {
     this.secretKey = process.env.JWT_SECRET as string;
@@ -102,7 +104,43 @@ class TokenManager {
   }
 
   isTokenRevoked(token: string): boolean {
-    return this.revokedTokens.has(token);
+    return this.revokedTokens.has(token) || this.usedRefreshTokens.has(token);
+  }
+
+  refreshToken(oldRefreshToken: string): { token: string; refreshToken: string } | null {
+    try {
+      // 验证旧的刷新令牌
+      const decoded = this.verifyRefreshToken(oldRefreshToken);
+      if (!decoded) {
+        return null;
+      }
+
+      // 检查刷新令牌是否已经被使用过
+      if (this.usedRefreshTokens.has(oldRefreshToken)) {
+        return null;
+      }
+
+      // 标记旧的刷新令牌为已使用
+      this.usedRefreshTokens.add(oldRefreshToken);
+
+      // 吊销旧的刷新令牌
+      this.revokeToken(oldRefreshToken);
+
+      // 生成新的令牌负载
+      const payload: TokenPayload = {
+        deviceId: decoded.deviceId,
+        userId: decoded.userId,
+        role: 'user'
+      };
+
+      // 生成新的访问令牌和刷新令牌
+      const newToken = this.generateToken(payload);
+      const newRefreshToken = this.generateRefreshToken(payload);
+
+      return { token: newToken, refreshToken: newRefreshToken };
+    } catch (error) {
+      return null;
+    }
   }
 
   private addTokenToDevice(deviceId: string, token: string): void {
@@ -113,7 +151,7 @@ class TokenManager {
   }
 
   private generateJti(): string {
-    return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    return crypto.randomUUID();
   }
 }
 

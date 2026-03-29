@@ -26,6 +26,7 @@ interface PairedServer {
   deviceId: string;
   pairedAt: number;
   isActive: boolean;
+  connectionStatus?: 'online' | 'offline' | 'checking';
 }
 
 interface NotificationSettingItemProps {
@@ -79,11 +80,39 @@ export const SettingsScreen: React.FC = () => {
     loadData();
   }, []);
 
+  const checkServerConnection = async (serverUrl: string): Promise<'online' | 'offline' | 'checking'> => {
+    try {
+      // 发送简单的请求来检查服务器连接
+      const response = await fetch(`${serverUrl}/api/auth/validate`, {
+        method: 'GET',
+        timeout: 5000 // 5秒超时
+      });
+      return response.ok ? 'online' : 'offline';
+    } catch (error) {
+      return 'offline';
+    }
+  };
+
   const loadData = async () => {
     const servers = await authService.getPairedServers();
-    setPairedServers(servers);
+    
+    // 检查每个服务器的连接状态
+    const serversWithStatus = await Promise.all(
+      servers.map(async (server) => {
+        const connectionStatus = await checkServerConnection(server.serverUrl);
+        return { ...server, connectionStatus };
+      })
+    );
+    
+    setPairedServers(serversWithStatus);
+    
     const active = await authService.getActiveServer();
-    setActiveServer(active);
+    if (active) {
+      const activeStatus = await checkServerConnection(active.serverUrl);
+      setActiveServer({ ...active, connectionStatus: activeStatus });
+    } else {
+      setActiveServer(null);
+    }
   };
 
   const handleUpdateNotification = async (key: keyof NotificationSettings, value: boolean) => {
@@ -194,6 +223,17 @@ export const SettingsScreen: React.FC = () => {
         <Text style={styles.serverDetails}>
           配对时间: {formatPairedAt(item.pairedAt)}
         </Text>
+        <View style={styles.connectionStatusContainer}>
+          <View style={[
+            styles.connectionStatusIndicator,
+            item.connectionStatus === 'online' && styles.statusOnline,
+            item.connectionStatus === 'offline' && styles.statusOffline
+          ]} />
+          <Text style={styles.connectionStatusText}>
+            {item.connectionStatus === 'online' ? '在线' : 
+             item.connectionStatus === 'offline' ? '离线' : '检查中'}
+          </Text>
+        </View>
         {item.isActive && (
           <View style={styles.activeBadge}>
             <Text style={styles.activeBadgeText}>当前使用</Text>
@@ -232,6 +272,17 @@ export const SettingsScreen: React.FC = () => {
               <Text style={styles.currentServerDetails}>
                 配对时间: {formatPairedAt(activeServer.pairedAt)}
               </Text>
+              <View style={styles.connectionStatusContainer}>
+                <View style={[
+                  styles.connectionStatusIndicator,
+                  activeServer.connectionStatus === 'online' && styles.statusOnline,
+                  activeServer.connectionStatus === 'offline' && styles.statusOffline
+                ]} />
+                <Text style={styles.connectionStatusText}>
+                  {activeServer.connectionStatus === 'online' ? '在线' : 
+                   activeServer.connectionStatus === 'offline' ? '离线' : '检查中'}
+                </Text>
+              </View>
             </View>
           </>
         )}
@@ -559,6 +610,28 @@ const styles = StyleSheet.create({
   },
   aboutValue: {
     fontSize: 16,
+    color: Colors.light.textSecondary,
+  },
+  connectionStatusContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  connectionStatusIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
+    backgroundColor: '#999',
+  },
+  statusOnline: {
+    backgroundColor: '#34c759',
+  },
+  statusOffline: {
+    backgroundColor: '#ff3b30',
+  },
+  connectionStatusText: {
+    fontSize: 12,
     color: Colors.light.textSecondary,
   },
 });

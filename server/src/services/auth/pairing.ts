@@ -22,6 +22,13 @@ interface DeviceInfo {
 class PairingService {
   private sessions: Map<string, PairingSession> = new Map();
   private devices: Map<string, DeviceInfo> = new Map();
+  private cleanupInterval: NodeJS.Timeout | null = null;
+  private pairingLock: boolean = false;
+
+  constructor() {
+    // 启动定时清理任务，每1分钟清理一次
+    this.startCleanupInterval();
+  }
 
   generatePairingCode(): PairingSession {
     const code = crypto.randomBytes(3).toString('hex').toUpperCase();
@@ -57,25 +64,38 @@ class PairingService {
   }
 
   completePairing(sessionId: string, deviceId: string, deviceName: string, platform: string, version: string): boolean {
-    const session = this.sessions.get(sessionId);
-    if (session && !session.paired && session.expiresAt > new Date()) {
-      session.paired = true;
-      session.deviceId = deviceId;
-
-      const device: DeviceInfo = {
-        id: deviceId,
-        name: deviceName,
-        platform,
-        version,
-        lastSeen: Date.now(),
-        pairedAt: Date.now(),
-        permissionLevel: 2
-      };
-
-      this.devices.set(deviceId, device);
-      return true;
+    // 检查锁定状态，防止并发配对
+    if (this.pairingLock) {
+      return false;
     }
-    return false;
+
+    // 获取配对锁
+    this.pairingLock = true;
+
+    try {
+      const session = this.sessions.get(sessionId);
+      if (session && !session.paired && session.expiresAt > new Date()) {
+        session.paired = true;
+        session.deviceId = deviceId;
+
+        const device: DeviceInfo = {
+          id: deviceId,
+          name: deviceName,
+          platform,
+          version,
+          lastSeen: Date.now(),
+          pairedAt: Date.now(),
+          permissionLevel: 2
+        };
+
+        this.devices.set(deviceId, device);
+        return true;
+      }
+      return false;
+    } finally {
+      // 释放配对锁
+      this.pairingLock = false;
+    }
   }
 
   cleanupExpiredSessions() {
@@ -131,6 +151,40 @@ class PairingService {
 
   isDevicePaired(deviceId: string): boolean {
     return this.devices.has(deviceId);
+  }
+
+  private startCleanupInterval() {
+    // 每1分钟清理一次过期会话
+    // 每30分钟清理一次不活跃设备
+    let counter = 0;
+    this.cleanupInterval = setInterval(() => {
+      this.cleanupExpiredSessions();
+      
+      // 每30分钟（30个1分钟间隔）清理一次不活跃设备
+      counter++;
+      if (counter % 30 === 0) {
+        this.cleanupInactiveDevices();
+      }
+    }, 60 * 1000);
+  }
+
+  private stopCleanupInterval() {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
+    }
+  }
+
+  // 清理过期的设备（超过30天未活跃的设备）
+  cleanupInactiveDevices() {
+    const now = Date.now();
+    const thirtyDaysAgo = now - (30 * 24 * 60 * 60 * 1000);
+    
+    for (const [deviceId, device] of this.devices.entries()) {
+      if (device.lastSeen < thirtyDaysAgo) {
+        this.devices.delete(deviceId);
+      }
+    }
   }
 }
 
