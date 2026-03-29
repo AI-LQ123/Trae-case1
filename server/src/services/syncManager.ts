@@ -72,16 +72,9 @@ export class SyncManager {
 
   private async getChatData(lastSyncTime: number): Promise<{ sessions: any[]; messages: any[] }> {
     try {
-      const allSessions = chatStore.getAllSessions();
-      const allMessages = chatStore.getAllMessages();
-
-      const filteredSessions = allSessions.filter(
-        session => new Date(session.lastUpdated).getTime() > lastSyncTime
-      );
-
-      const filteredMessages = allMessages.filter(
-        message => new Date(message.timestamp).getTime() > lastSyncTime
-      );
+      // 使用增量查询方法，避免全量加载
+      const filteredSessions = chatStore.getSessionsAfter(lastSyncTime);
+      const filteredMessages = chatStore.getMessagesAfter(lastSyncTime);
 
       return {
         sessions: filteredSessions.map(session => ({
@@ -105,13 +98,8 @@ export class SyncManager {
 
   private async getTasksData(lastSyncTime: number): Promise<any[]> {
     try {
-      const allTasks = taskStore.getAllTasks();
-      
-      return allTasks.filter(
-        task => task.createdAt > lastSyncTime || 
-                (task.startedAt && task.startedAt > lastSyncTime) ||
-                (task.completedAt && task.completedAt > lastSyncTime)
-      );
+      // 使用增量查询方法，避免全量加载
+      return taskStore.getTasksAfter(lastSyncTime);
     } catch (error) {
       logger.error('Failed to get tasks sync data', {
         context: 'SyncManager',
@@ -133,7 +121,7 @@ export class SyncManager {
     }
   }
 
-  private getTerminalsData(lastSyncTime: number): any[] {
+  private async getTerminalsData(lastSyncTime: number): Promise<any[]> {
     try {
       const allSessions = terminalManager.getAllSessions();
       

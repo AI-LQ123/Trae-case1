@@ -150,6 +150,25 @@ export class ChatStore {
     return messages;
   }
 
+  // 增量查询：获取指定时间之后更新的会话
+  getSessionsAfter(timestamp: number): ChatSession[] {
+    return Array.from(this.sessions.values()).filter(
+      session => new Date(session.lastUpdated).getTime() > timestamp
+    );
+  }
+
+  // 增量查询：获取指定时间之后的消息
+  getMessagesAfter(timestamp: number): any[] {
+    const messages: any[] = [];
+    for (const session of this.sessions.values()) {
+      const filteredMessages = session.messages.filter(
+        message => new Date(message.timestamp).getTime() > timestamp
+      );
+      messages.push(...filteredMessages);
+    }
+    return messages;
+  }
+
   // 清理过期会话（超过30天的会话）
   async cleanupExpiredSessions(): Promise<number> {
     const now = new Date();

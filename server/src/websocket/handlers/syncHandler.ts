@@ -86,14 +86,25 @@ export class SyncHandler implements MessageHandler {
 
   private async handleSyncRequest(messageId: string, deviceId: string, data: unknown): Promise<void> {
     const syncData = data as Record<string, unknown>;
-    if (!syncData.lastSyncTime || !syncData.syncTypes) {
+    if (syncData.lastSyncTime === undefined || !syncData.syncTypes) {
       this.sendError(deviceId, messageId, 'Missing required fields: lastSyncTime and syncTypes');
+      return;
+    }
+
+    // 验证 syncTypes 数组
+    const validSyncTypes: SyncType[] = ['chat', 'tasks', 'notifications', 'terminals'];
+    const requestedTypes = (syncData.syncTypes as string[]).filter(type => 
+      validSyncTypes.includes(type as SyncType)
+    ) as SyncType[];
+
+    if (requestedTypes.length === 0) {
+      this.sendError(deviceId, messageId, 'No valid sync types provided');
       return;
     }
 
     const request: SyncRequest = {
       lastSyncTime: syncData.lastSyncTime as number,
-      syncTypes: syncData.syncTypes as SyncType[],
+      syncTypes: requestedTypes,
     };
 
     const response = await syncManager.getSyncData(request);

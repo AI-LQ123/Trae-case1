@@ -108,6 +108,17 @@ export class TaskStore {
       .sort((a, b) => b.createdAt - a.createdAt);
   }
 
+  // 增量查询：获取指定时间之后更新的任务
+  getTasksAfter(timestamp: number): Task[] {
+    return Array.from(this.tasks.values())
+      .filter(task => 
+        task.createdAt > timestamp || 
+        (task.startedAt && task.startedAt > timestamp) ||
+        (task.completedAt && task.completedAt > timestamp)
+      )
+      .sort((a, b) => b.createdAt - a.createdAt);
+  }
+
   async cleanupOldTasks(): Promise<number> {
     const now = Date.now();
     const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
