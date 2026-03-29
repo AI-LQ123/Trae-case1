@@ -1,26 +1,28 @@
 #!/bin/bash
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
-
 cleanup() {
-    echo -e "${YELLOW}\nShutting down Redis...${NC}"
-    docker-compose down redis
-    echo -e "${GREEN}Cleanup complete!${NC}"
+    echo ""
+    echo "Stopping Redis..."
+    docker-compose stop redis
+    echo "Development environment stopped."
+    exit 0
 }
 
-trap cleanup EXIT INT TERM
+trap cleanup SIGINT SIGTERM
 
-echo -e "${GREEN}Starting development environment...${NC}"
+echo "Starting development environment..."
 
-echo -e "${GREEN}Starting Redis...${NC}"
+echo "Starting Redis..."
 docker-compose up -d redis
 
-echo -e "${GREEN}Installing dependencies with locked versions...${NC}"
+echo "Installing dependencies with locked versions..."
 npm ci
 
-echo -e "${GREEN}Starting server in development mode...${NC}"
-echo -e "${YELLOW}Server will be available at http://localhost:3000${NC}"
+echo ""
+echo "✅ Development environment ready!"
+echo "Server will be available at: http://localhost:3000"
+echo "Press Ctrl+C to stop the environment"
+echo ""
+
+echo "Starting server in development mode..."
 npm run dev:server

@@ -2,61 +2,44 @@
 
 set -euo pipefail
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
-
-echo -e "${GREEN}Starting deployment...${NC}"
+echo "Starting deployment..."
 
 check_command() {
     if ! command -v "$1" &> /dev/null; then
-        echo -e "${RED}Error: $1 is not installed${NC}"
+        echo "❌ Error: $1 is not installed"
         exit 1
     fi
 }
 
+check_command git
 check_command docker
 check_command docker-compose
-check_command git
 
 ENV_FILE=".env"
 if [ ! -f "$ENV_FILE" ]; then
-    echo -e "${RED}Error: .env file not found. Copy .env.example to .env and configure.${NC}"
+    echo "❌ Error: .env file not found. Copy .env.example to .env and configure."
     exit 1
 fi
 
-BACKUP_DIR="./backups/$(date +%Y%m%d_%H%M%S)"
-mkdir -p "$BACKUP_DIR"
-echo -e "${YELLOW}Creating backup in $BACKUP_DIR...${NC}"
-if [ -d "./server/storage" ]; then
-    cp -r "./server/storage" "$BACKUP_DIR/" 2>/dev/null || true
-fi
+echo "✅ Prerequisites checked"
 
-echo -e "${GREEN}Pulling latest changes...${NC}"
+echo "Pulling latest changes..."
 git pull origin main
 
-echo -e "${GREEN}Stopping existing services...${NC}"
-docker-compose down --remove-orphans || true
+echo "Stopping existing services..."
+docker-compose down --remove-orphans
 
-echo -e "${GREEN}Building and starting services...${NC}"
+echo "Building and starting services..."
 docker-compose build --no-cache server
 docker-compose up -d
 
-echo -e "${GREEN}Waiting for services to start...${NC}"
-sleep 10
+echo "Waiting for services to start..."
+sleep 5
 
-if docker-compose ps | grep -q "Up"; then
-    echo -e "${GREEN}Deployment successful!${NC}"
-    docker-compose ps
-    echo -e "${YELLOW}Recent logs:${NC}"
-    docker-compose logs --tail=20
-else
-    echo -e "${RED}Deployment failed! Attempting rollback...${NC}"
-    docker-compose down
-    if [ -d "$BACKUP_DIR/storage" ]; then
-        cp -r "$BACKUP_DIR/storage" ./server/ 2>/dev/null || true
-    fi
-    echo -e "${RED}Rollback complete${NC}"
-    exit 1
-fi
+echo "✅ Deployment complete!"
+echo "Running containers:"
+docker-compose ps
+
+echo ""
+echo "Recent logs:"
+docker-compose logs --tail=20
