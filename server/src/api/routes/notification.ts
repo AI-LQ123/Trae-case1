@@ -1,10 +1,11 @@
 import { Router, Request, Response } from 'express';
-import { notificationConfigManager } from '../../services/notification/config';
-import { UserNotificationPreferences, NotificationConfig } from '../../../shared/types/notification';
+import { NotificationConfigManager } from '../../services/notification/config';
+import { UserNotificationPreferences, NotificationConfig } from '../../../../shared/types/notification';
 import * as fs from 'fs';
 import * as path from 'path';
 
 const router = Router();
+const notificationConfigManager = new NotificationConfigManager();
 const userPreferencesPath = path.join(__dirname, '../../../../storage/user-notification-preferences.json');
 
 // 确保存储目录存在
