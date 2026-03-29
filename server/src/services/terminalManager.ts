@@ -149,12 +149,32 @@ export class TerminalManager {
       return false;
     }
 
-    session.ptyProcess.resize(request.cols, request.rows);
-    logger.info(`Terminal resized: ${request.sessionId}`, {
-      context: 'TerminalManager',
-      metadata: { sessionId: request.sessionId, cols: request.cols, rows: request.rows },
-    });
-    return true;
+    try {
+      session.ptyProcess.resize(request.cols, request.rows);
+      logger.info(`Terminal resized: ${request.sessionId}`, {
+        context: 'TerminalManager',
+        metadata: { sessionId: request.sessionId, cols: request.cols, rows: request.rows },
+      });
+      return true;
+    } catch (error) {
+      const errorMessage = (error as Error).message || String(error);
+      logger.warn(`Failed to resize terminal: ${errorMessage}`, {
+        context: 'TerminalManager',
+        metadata: { sessionId: request.sessionId, error: errorMessage },
+      });
+      
+      if (errorMessage.includes('already exited')) {
+        session.status = 'closed';
+        session.ptyProcess = undefined;
+        this.outputCallbacks.delete(request.sessionId);
+        logger.info(`Marked terminal session as closed: ${request.sessionId}`, {
+          context: 'TerminalManager',
+          metadata: { sessionId: request.sessionId },
+        });
+      }
+      
+      return false;
+    }
   }
 
   closeSession(sessionId: string): boolean {
