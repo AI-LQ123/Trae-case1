@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, Alert } from 'react-native';
+import { View, StyleSheet, ScrollView, Alert, TouchableOpacity, Text } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
 import { RootState } from '../state/store';
@@ -10,7 +10,6 @@ import {
   setTheme,
   setFontSize,
   updateConnectionSettings,
-  ConnectionSettings,
   addQuickCommand,
   removeQuickCommand,
   updateQuickCommand,

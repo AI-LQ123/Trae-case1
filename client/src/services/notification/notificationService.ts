@@ -1,6 +1,6 @@
 import authService from '../auth/authService';
-import { NotificationConfig, UserNotificationPreferences } from '../../../shared/types/notification';
-import { handleFetchError, formatErrorForDisplay, ErrorDetails } from '../../utils/errorHandler';
+import { NotificationConfig, UserNotificationPreferences } from '../../../../shared/types/notification';
+import { handleFetchError, formatErrorForDisplay } from '../../utils/errorHandler';
 
 class NotificationService {
   private async getServerUrl(): Promise<string> {
@@ -11,13 +11,13 @@ class NotificationService {
     return activeServer.serverUrl;
   }
 
-  private async getHeaders(): Promise<HeadersInit> {
+  private async getHeaders(): Promise<Record<string, string>> {
     const token = await authService.getToken();
     const deviceId = await authService.getDeviceId();
     return {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${token}`,
-      'x-device-id': deviceId
+      'x-device-id': deviceId || ''
     };
   }
 

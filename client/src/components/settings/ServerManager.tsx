@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, FlatList } from 'react-native';
 import { Colors } from '../../constants/colors';
 
-interface PairedServer {
+export interface PairedServer {
   id: string;
   serverUrl: string;
   serverName?: string;

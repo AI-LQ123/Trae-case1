@@ -5,7 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { View, Text, StyleSheet, Button } from 'react-native';
 import { store } from './state/store';
 import { AppNavigator } from './navigation/AppNavigator';
-import { validateEnvConfig, showConfigAlert, enforceSecureConnection, getEnvConfig } from './constants/config';
+import { validateEnvConfig, showConfigAlert, enforceSecureConnection } from './constants/config';
 import { Colors } from './constants/colors';
 
 // 配置错误组件
@@ -91,37 +91,37 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: Colors.background,
+    backgroundColor: Colors.light.background,
   },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: Colors.background,
+    backgroundColor: Colors.light.background,
     padding: 20,
   },
   errorTitle: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: Colors.error,
+    color: Colors.danger,
     marginBottom: 16,
   },
   errorMessage: {
     fontSize: 16,
-    color: Colors.text,
+    color: Colors.light.text,
     marginBottom: 12,
     textAlign: 'center',
   },
   errorItem: {
     fontSize: 14,
-    color: Colors.textSecondary,
+    color: Colors.light.textSecondary,
     marginBottom: 8,
     textAlign: 'left',
     width: '100%',
   },
   errorHint: {
     fontSize: 14,
-    color: Colors.textSecondary,
+    color: Colors.light.textSecondary,
     marginTop: 16,
     marginBottom: 24,
     textAlign: 'center',
