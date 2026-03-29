@@ -7,6 +7,7 @@ import taskReducer from './slices/taskSlice';
 import projectReducer from './slices/projectSlice';
 import settingsReducer from './slices/settingsSlice';
 import notificationReducer from './slices/notificationSlice';
+import quickCommandsReducer from './slices/quickCommandsSlice';
 
 // 启用 Immer 的 MapSet 插件以支持 Set 类型的状态管理
 enableMapSet();
@@ -20,6 +21,7 @@ export const store = configureStore({
     project: projectReducer,
     settings: settingsReducer,
     notification: notificationReducer,
+    quickCommands: quickCommandsReducer,
   },
   middleware: getDefaultMiddleware =>
     getDefaultMiddleware({
