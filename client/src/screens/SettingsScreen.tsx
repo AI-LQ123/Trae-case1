@@ -260,6 +260,36 @@ export const SettingsScreen: React.FC = () => {
 
         {notifications.enabled && (
           <>
+            <SectionHeader title="通知类型设置" />
+            
+            <NotificationSettingItem
+              title="信息通知"
+              description="当有信息提示时发送通知"
+              value={notifications.info}
+              onValueChange={(value) => handleUpdateNotification('info', value)}
+            />
+
+            <NotificationSettingItem
+              title="成功通知"
+              description="当操作成功时发送通知"
+              value={notifications.success}
+              onValueChange={(value) => handleUpdateNotification('success', value)}
+            />
+
+            <NotificationSettingItem
+              title="警告通知"
+              description="当有警告时发送通知"
+              value={notifications.warning}
+              onValueChange={(value) => handleUpdateNotification('warning', value)}
+            />
+
+            <NotificationSettingItem
+              title="错误通知"
+              description="当发生错误时发送通知"
+              value={notifications.error}
+              onValueChange={(value) => handleUpdateNotification('error', value)}
+            />
+
             <NotificationSettingItem
               title="任务完成通知"
               description="当任务成功完成时发送通知"
@@ -275,17 +305,24 @@ export const SettingsScreen: React.FC = () => {
             />
 
             <NotificationSettingItem
-              title="错误通知"
-              description="当发生错误时发送通知"
-              value={notifications.errors}
-              onValueChange={(value) => handleUpdateNotification('errors', value)}
+              title="提及通知"
+              description="当被提及时发送通知"
+              value={notifications.mention}
+              onValueChange={(value) => handleUpdateNotification('mention', value)}
             />
 
             <NotificationSettingItem
-              title="提及通知"
-              description="当被提及时发送通知"
-              value={notifications.mentions}
-              onValueChange={(value) => handleUpdateNotification('mentions', value)}
+              title="文件变更通知"
+              description="当文件发生变化时发送通知"
+              value={notifications.fileChange}
+              onValueChange={(value) => handleUpdateNotification('fileChange', value)}
+            />
+
+            <NotificationSettingItem
+              title="终端输出通知"
+              description="当终端有输出时发送通知"
+              value={notifications.terminalOutput}
+              onValueChange={(value) => handleUpdateNotification('terminalOutput', value)}
             />
           </>
         )}

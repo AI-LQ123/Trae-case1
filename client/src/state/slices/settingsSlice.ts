@@ -9,10 +9,17 @@ export interface ConnectionSettings {
 
 export interface NotificationSettings {
   enabled: boolean;
+  info: boolean;
+  success: boolean;
+  warning: boolean;
+  error: boolean;
+  errors: boolean;
   taskCompleted: boolean;
   taskFailed: boolean;
-  errors: boolean;
+  mention: boolean;
   mentions: boolean;
+  fileChange: boolean;
+  terminalOutput: boolean;
 }
 
 export interface QuickCommand {
@@ -39,10 +46,17 @@ const initialState: SettingsState = {
   },
   notifications: {
     enabled: true,
+    info: true,
+    success: true,
+    warning: true,
+    error: true,
+    errors: true,
     taskCompleted: true,
     taskFailed: true,
-    errors: true,
+    mention: true,
     mentions: true,
+    fileChange: true,
+    terminalOutput: false,
   },
   quickCommands: [
     { id: '1', name: 'Git Status', command: 'git status', category: 'terminal' },
@@ -61,7 +75,22 @@ const settingsSlice = createSlice({
       state.connection = { ...state.connection, ...action.payload };
     },
     updateNotificationSettings: (state, action: PayloadAction<Partial<NotificationSettings>>) => {
-      state.notifications = { ...state.notifications, ...action.payload };
+      const newSettings = { ...state.notifications, ...action.payload };
+      
+      if (action.payload.error !== undefined) {
+        newSettings.errors = action.payload.error;
+      }
+      if (action.payload.errors !== undefined) {
+        newSettings.error = action.payload.errors;
+      }
+      if (action.payload.mention !== undefined) {
+        newSettings.mentions = action.payload.mention;
+      }
+      if (action.payload.mentions !== undefined) {
+        newSettings.mention = action.payload.mentions;
+      }
+      
+      state.notifications = newSettings;
     },
     addQuickCommand: (state, action: PayloadAction<QuickCommand>) => {
       state.quickCommands.push(action.payload);

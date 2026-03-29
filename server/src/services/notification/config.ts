@@ -1,3 +1,6 @@
+import * as fs from 'fs';
+import * as path from 'path';
+
 export interface NotificationChannelConfig {
   enabled: boolean;
   sound: boolean;
@@ -99,25 +102,65 @@ export const defaultNotificationConfig: NotificationConfig = {
 export class NotificationConfigManager {
   private config: NotificationConfig;
   private configPath?: string;
+  private listeners: Array<(config: NotificationConfig) => void> = [];
 
   constructor(initialConfig?: Partial<NotificationConfig>, configPath?: string) {
+    this.configPath = configPath;
+    
+    const loadedConfig = this.loadConfig();
     this.config = {
       ...defaultNotificationConfig,
+      ...loadedConfig,
       ...initialConfig,
       general: {
         ...defaultNotificationConfig.general,
+        ...loadedConfig?.general,
         ...initialConfig?.general,
       },
       types: {
         ...defaultNotificationConfig.types,
+        ...loadedConfig?.types,
         ...initialConfig?.types,
       },
       channels: {
         ...defaultNotificationConfig.channels,
+        ...loadedConfig?.channels,
         ...initialConfig?.channels,
       },
     };
-    this.configPath = configPath;
+  }
+
+  private loadConfig(): Partial<NotificationConfig> | null {
+    if (!this.configPath) {
+      return null;
+    }
+
+    try {
+      if (fs.existsSync(this.configPath)) {
+        const data = fs.readFileSync(this.configPath, 'utf-8');
+        return JSON.parse(data);
+      }
+    } catch (error) {
+      console.warn('Failed to load notification config:', error);
+    }
+    return null;
+  }
+
+  private saveConfig(): void {
+    if (!this.configPath) {
+      return;
+    }
+
+    try {
+      const dir = path.dirname(this.configPath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      
+      fs.writeFileSync(this.configPath, JSON.stringify(this.config, null, 2), 'utf-8');
+    } catch (error) {
+      console.warn('Failed to save notification config:', error);
+    }
   }
 
   getConfig(): NotificationConfig {
@@ -141,6 +184,9 @@ export class NotificationConfigManager {
         ...partialConfig?.channels,
       },
     };
+    
+    this.saveConfig();
+    this.notifyListeners();
   }
 
   isTypeEnabled(type: keyof NotificationConfig['types']): boolean {
@@ -169,6 +215,29 @@ export class NotificationConfigManager {
 
   resetToDefaults(): void {
     this.config = { ...defaultNotificationConfig };
+    this.saveConfig();
+    this.notifyListeners();
+  }
+
+  addListener(listener: (config: NotificationConfig) => void): () => void {
+    this.listeners.push(listener);
+    
+    return () => {
+      const index = this.listeners.indexOf(listener);
+      if (index !== -1) {
+        this.listeners.splice(index, 1);
+      }
+    };
+  }
+
+  private notifyListeners(): void {
+    this.listeners.forEach(listener => {
+      try {
+        listener(this.config);
+      } catch (error) {
+        console.warn('Error in config listener:', error);
+      }
+    });
   }
 }
 
