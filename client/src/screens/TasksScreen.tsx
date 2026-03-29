@@ -30,7 +30,7 @@ export const TasksScreen: React.FC = () => {
   const filteredTasks = activeTasks.filter(task => {
     switch (currentFilter) {
       case 'active':
-        return ['pending', 'running', 'paused'].includes(task.status);
+        return ['pending', 'running'].includes(task.status);
       case 'completed':
         return task.status === 'completed';
       case 'failed':

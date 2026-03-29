@@ -48,8 +48,6 @@ const getStatusColor = (status: Task['status']): string => {
       return Colors.danger;
     case 'cancelled':
       return Colors.warning;
-    case 'paused':
-      return Colors.info;
     default:
       return Colors.light.textSecondary;
   }
@@ -59,7 +57,6 @@ const getStatusText = (status: Task['status']): string => {
   const statusMap: Record<Task['status'], string> = {
     pending: '待处理',
     running: '运行中',
-    paused: '已暂停',
     completed: '已完成',
     failed: '失败',
     cancelled: '已取消',
