@@ -15,7 +15,7 @@ FROM node:20-alpine
 
 RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001
 
-WORKDIR /app
+WORKDIR /app/server
 
 COPY --from=builder --chown=nodejs:nodejs /app/server/dist ./dist
 COPY --from=builder --chown=nodejs:nodejs /app/server/node_modules ./node_modules

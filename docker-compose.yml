@@ -26,7 +26,7 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - ./server/storage:/app/storage
+      - ./server/storage:/app/server/storage
 
 volumes:
   redis-data:
