@@ -27,6 +27,7 @@ export const Colors = {
   terminal: {
     background: '#1E1E1E',
     foreground: '#D4D4D4',
+    textSecondary: '#6E6E6E',
     black: '#000000',
     red: '#CD3131',
     green: '#0DBC79',

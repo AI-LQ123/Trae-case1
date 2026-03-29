@@ -5,13 +5,20 @@ export interface TerminalSession {
   name: string;
   cwd: string;
   createdAt: number;
+  status: 'active' | 'inactive' | 'closed';
 }
 
 export interface TerminalOutput {
+  sessionId: string;
+  data: string;
+  timestamp: number;
+  type: 'stdout' | 'stderr';
+}
+
+export interface TerminalCommand {
   id: string;
   sessionId: string;
-  type: 'stdout' | 'stderr' | 'command';
-  content: string;
+  command: string;
   timestamp: number;
 }
 
@@ -19,14 +26,22 @@ interface TerminalState {
   sessions: TerminalSession[];
   currentSessionId: string | null;
   outputs: Record<string, TerminalOutput[]>;
-  maxOutputLines: number;
+  commandHistory: Record<string, TerminalCommand[]>;
+  loading: boolean;
+  error: string | null;
+  cols: number;
+  rows: number;
 }
 
 const initialState: TerminalState = {
   sessions: [],
   currentSessionId: null,
   outputs: {},
-  maxOutputLines: 10000,
+  commandHistory: {},
+  loading: false,
+  error: null,
+  cols: 80,
+  rows: 24,
 };
 
 const terminalSlice = createSlice({
@@ -37,16 +52,26 @@ const terminalSlice = createSlice({
       state.sessions = action.payload;
     },
     addSession: (state, action: PayloadAction<TerminalSession>) => {
-      state.sessions.push(action.payload);
+      state.sessions.unshift(action.payload);
       if (!state.currentSessionId) {
         state.currentSessionId = action.payload.id;
       }
+      state.outputs[action.payload.id] = [];
+      state.commandHistory[action.payload.id] = [];
     },
     removeSession: (state, action: PayloadAction<string>) => {
-      state.sessions = state.sessions.filter(s => s.id !== action.payload);
-      delete state.outputs[action.payload];
-      if (state.currentSessionId === action.payload) {
-        state.currentSessionId = state.sessions[0]?.id || null;
+      const sessionId = action.payload;
+      state.sessions = state.sessions.filter(s => s.id !== sessionId);
+      delete state.outputs[sessionId];
+      delete state.commandHistory[sessionId];
+      if (state.currentSessionId === sessionId) {
+        state.currentSessionId = state.sessions.length > 0 ? state.sessions[0].id : null;
+      }
+    },
+    updateSession: (state, action: PayloadAction<Partial<TerminalSession> & { id: string }>) => {
+      const session = state.sessions.find(s => s.id === action.payload.id);
+      if (session) {
+        Object.assign(session, action.payload);
       }
     },
     setCurrentSession: (state, action: PayloadAction<string | null>) => {
@@ -58,12 +83,39 @@ const terminalSlice = createSlice({
         state.outputs[sessionId] = [];
       }
       state.outputs[sessionId].push(action.payload);
-      if (state.outputs[sessionId].length > state.maxOutputLines) {
-        state.outputs[sessionId] = state.outputs[sessionId].slice(-state.maxOutputLines);
+      const maxOutputs = 1000;
+      if (state.outputs[sessionId].length > maxOutputs) {
+        state.outputs[sessionId] = state.outputs[sessionId].slice(-maxOutputs);
       }
     },
     clearOutput: (state, action: PayloadAction<string>) => {
-      state.outputs[action.payload] = [];
+      const sessionId = action.payload;
+      state.outputs[sessionId] = [];
+    },
+    addCommand: (state, action: PayloadAction<TerminalCommand>) => {
+      const { sessionId } = action.payload;
+      if (!state.commandHistory[sessionId]) {
+        state.commandHistory[sessionId] = [];
+      }
+      state.commandHistory[sessionId].push(action.payload);
+      const maxHistory = 100;
+      if (state.commandHistory[sessionId].length > maxHistory) {
+        state.commandHistory[sessionId] = state.commandHistory[sessionId].slice(-maxHistory);
+      }
+    },
+    setLoading: (state, action: PayloadAction<boolean>) => {
+      state.loading = action.payload;
+    },
+    setError: (state, action: PayloadAction<string | null>) => {
+      state.error = action.payload;
+    },
+    setTerminalSize: (state, action: PayloadAction<{ cols: number; rows: number }>) => {
+      state.cols = action.payload.cols;
+      state.rows = action.payload.rows;
+    },
+    clearAllOutputs: (state) => {
+      state.outputs = {};
+      state.commandHistory = {};
     },
   },
 });
@@ -72,9 +124,15 @@ export const {
   setSessions,
   addSession,
   removeSession,
+  updateSession,
   setCurrentSession,
   addOutput,
   clearOutput,
+  addCommand,
+  setLoading,
+  setError,
+  setTerminalSize,
+  clearAllOutputs,
 } = terminalSlice.actions;
 
 export default terminalSlice.reducer;
