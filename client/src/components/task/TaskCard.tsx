@@ -11,6 +11,13 @@ interface TaskCardProps {
   onCancel?: (taskId: string) => void;
 }
 
+const hexToRgba = (hex: string, alpha: number): string => {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
+
 const getStatusColor = (status: Task['status']): string => {
   switch (status) {
     case 'running':
@@ -24,6 +31,10 @@ const getStatusColor = (status: Task['status']): string => {
     default:
       return Colors.light.textSecondary;
   }
+};
+
+const getStatusBackgroundColor = (status: Task['status']): string => {
+  return hexToRgba(getStatusColor(status), 0.12);
 };
 
 const getStatusText = (status: Task['status']): string => {
@@ -89,7 +100,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, onPress, onCancel }) =
             </View>
           )}
         </View>
-        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(task.status) + '20' }]}>
+        <View style={[styles.statusBadge, { backgroundColor: getStatusBackgroundColor(task.status) }]}>
           <Text style={[styles.statusText, { color: getStatusColor(task.status) }]}>
             {getStatusText(task.status)}
           </Text>
@@ -250,7 +261,7 @@ const styles = StyleSheet.create({
   cancelButton: {
     paddingHorizontal: 12,
     paddingVertical: 6,
-    backgroundColor: Colors.danger + '20',
+    backgroundColor: hexToRgba(Colors.danger, 0.12),
     borderRadius: 6,
   },
   cancelButtonText: {
