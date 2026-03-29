@@ -263,7 +263,7 @@ describe('第二阶段集成测试', () => {
       expect(syncResponse.terminals).toBeDefined();
     });
 
-    test.skip('应该能够获取增量同步数据', async () => {
+    test('应该能够获取增量同步数据', async () => {
       // 创建一个任务
       const taskRequest = {
         name: 'Sync Test Task',
@@ -304,7 +304,7 @@ describe('第二阶段集成测试', () => {
    * 端到端集成测试
    */
   describe('端到端集成测试', () => {
-    test.skip('完整的任务管理流程', async () => {
+    test('完整的任务管理流程', async () => {
       // 1. 创建任务
       const taskRequest = {
         name: 'E2E Test Task',
@@ -330,14 +330,14 @@ describe('第二阶段集成测试', () => {
         }, 1000);
       });
 
-      // 4. 同步任务数据 (跳过同步测试，避免终端错误)
-      // const syncRequest = {
-      //   lastSyncTime: Date.now() - 3600000,
-      //   syncTypes: ['tasks'] as SyncType[],
-      // };
-      // const syncResponse = await syncManager.getSyncData(syncRequest);
-      // expect(syncResponse.tasks).toBeDefined();
-      // expect(Array.isArray(syncResponse.tasks)).toBe(true);
+      // 4. 同步任务数据
+      const syncRequest = {
+        lastSyncTime: Date.now() - 3600000,
+        syncTypes: ['tasks'] as SyncType[],
+      };
+      const syncResponse = await syncManager.getSyncData(syncRequest);
+      expect(syncResponse.tasks).toBeDefined();
+      expect(Array.isArray(syncResponse.tasks)).toBe(true);
     });
 
     test('完整的终端管理流程', async () => {
@@ -382,7 +382,7 @@ describe('第二阶段集成测试', () => {
    * 性能基准测试
    */
   describe('性能基准测试', () => {
-    test.skip('任务创建和启动时间应该小于 200ms', async () => {
+    test('任务创建和启动时间应该小于 200ms', async () => {
       const startTime = Date.now();
 
       const taskRequest = {
@@ -420,7 +420,7 @@ describe('第二阶段集成测试', () => {
       expect(elapsedTime).toBeLessThan(50);
     });
 
-    test.skip('服务器应该能够处理并发任务', async () => {
+    test('服务器应该能够处理并发任务', async () => {
       const tasksCount = 3;
       const taskPromises = [];
 

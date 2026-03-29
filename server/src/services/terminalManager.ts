@@ -94,11 +94,17 @@ export class TerminalManager {
     this.sessions.set(sessionId, session);
 
     ptyProcess.onData((data: string) => {
-      this.emitOutput(sessionId, data, 'stdout');
+      const session = this.sessions.get(sessionId);
+      if (session && session.status === 'active') {
+        this.emitOutput(sessionId, data, 'stdout');
+      }
     });
 
     ptyProcess.onExit(() => {
-      this.closeSession(sessionId);
+      const session = this.sessions.get(sessionId);
+      if (session && session.status !== 'closed') {
+        this.closeSession(sessionId);
+      }
     });
 
     logger.info(`Terminal session created: ${sessionId}`, {
@@ -184,10 +190,18 @@ export class TerminalManager {
     }
 
     if (session.ptyProcess) {
-      session.ptyProcess.kill();
+      try {
+        session.ptyProcess.kill();
+      } catch (error) {
+        logger.warn(`Error killing pty process: ${(error as Error).message}`, {
+          context: 'TerminalManager',
+          metadata: { sessionId },
+        });
+      }
     }
 
     session.status = 'closed';
+    session.ptyProcess = undefined;
     this.outputCallbacks.delete(sessionId);
 
     logger.info(`Terminal session closed: ${sessionId}`, {
