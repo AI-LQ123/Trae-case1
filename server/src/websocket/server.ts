@@ -206,6 +206,10 @@ export class WebSocketServer {
           metadata: { deviceId, messageSize, limit: this.config.maxMessageSize },
         });
         this.sendErrorToDevice(deviceId, 'MESSAGE_TOO_LARGE', `Message size exceeds limit of ${this.config.maxMessageSize} bytes`);
+        const connection = this.connectionManager.getConnection(deviceId);
+        if (connection) {
+          connection.ws.close(4002, 'Message too large');
+        }
         return;
       }
 
