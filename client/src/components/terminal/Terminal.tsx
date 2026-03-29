@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Dimensions,
+  LayoutChangeEvent,
 } from 'react-native';
 import { Colors } from '../../constants/colors';
 import { TerminalOutput, TerminalCommand } from '../../state/slices/terminalSlice';
@@ -26,7 +27,6 @@ const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 const CHAR_WIDTH = 8;
 const LINE_HEIGHT = 18;
-const HEADER_HEIGHT = 100;
 const INPUT_HEIGHT = 60;
 
 export const Terminal: React.FC<TerminalProps> = ({
@@ -39,10 +39,16 @@ export const Terminal: React.FC<TerminalProps> = ({
   const scrollViewRef = useRef<ScrollView>(null);
   const inputRef = useRef<TextInput>(null);
   const [inputText, setInputText] = React.useState('');
+  const [containerHeight, setContainerHeight] = useState(screenHeight);
 
   const terminalWidth = screenWidth - 32;
   const cols = Math.floor(terminalWidth / CHAR_WIDTH);
-  const rows = Math.floor((screenHeight - HEADER_HEIGHT - INPUT_HEIGHT) / LINE_HEIGHT);
+  const rows = Math.floor((containerHeight - INPUT_HEIGHT) / LINE_HEIGHT);
+
+  const handleContainerLayout = useCallback((event: LayoutChangeEvent) => {
+    const { height } = event.nativeEvent.layout;
+    setContainerHeight(height);
+  }, []);
 
   useEffect(() => {
     if (onResize) {
@@ -96,6 +102,7 @@ export const Terminal: React.FC<TerminalProps> = ({
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      onLayout={handleContainerLayout}
     >
       <View style={styles.terminalContainer}>
         <ScrollView

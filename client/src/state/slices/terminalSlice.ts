@@ -138,4 +138,17 @@ export const {
   clearAllOutputs,
 } = terminalSlice.actions;
 
+export const selectCurrentSessionOutputs = (state: { terminal: { currentSessionId: string | null; outputs: Record<string, any[]>; } }) =>
+  state.terminal.currentSessionId
+    ? state.terminal.outputs[state.terminal.currentSessionId] || []
+    : [];
+
+export const selectCurrentSessionCommands = (state: { terminal: { currentSessionId: string | null; commandHistory: Record<string, any[]>; } }) =>
+  state.terminal.currentSessionId
+    ? state.terminal.commandHistory[state.terminal.currentSessionId] || []
+    : [];
+
+export const selectCurrentSession = (state: { terminal: { currentSessionId: string | null; sessions: Array<{ id: string; }>; } }) =>
+  state.terminal.sessions.find(s => s.id === state.terminal.currentSessionId);
+
 export default terminalSlice.reducer;

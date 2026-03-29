@@ -23,9 +23,22 @@ import {
   setTerminalSize,
   TerminalSession,
   TerminalOutput,
+  selectCurrentSessionOutputs,
+  selectCurrentSessionCommands,
+  selectCurrentSession,
 } from '../state/slices/terminalSlice';
 import type { RootState, AppDispatch } from '../state/store';
 import { Colors } from '../constants/colors';
+import type {
+  TerminalEventPayload,
+  TerminalSessionCreatedData,
+  TerminalCommandExecutedData,
+  TerminalSessionClosedData,
+  TerminalSessionsListData,
+  TerminalErrorData,
+  TerminalOutputData,
+} from '../types/terminal';
+import type { WebSocketMessage } from '../services/websocket/WebSocketClient';
 
 const generateId = (): string => {
   return `term-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
@@ -37,51 +50,55 @@ export const TerminalScreen: React.FC = () => {
   const {
     sessions,
     currentSessionId,
-    outputs,
-    commandHistory,
     loading,
     cols,
     rows,
   } = useSelector((state: RootState) => state.terminal);
 
+  const currentOutputs = useSelector(selectCurrentSessionOutputs);
+  const currentCommands = useSelector(selectCurrentSessionCommands);
+  const currentSession = useSelector(selectCurrentSession);
+
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
   const [newSessionName, setNewSessionName] = useState('');
   const [newSessionCwd, setNewSessionCwd] = useState('');
-
-  const currentSession = sessions.find(s => s.id === currentSessionId);
 
   useEffect(() => {
     const client = useWebSocket.getClient();
     if (!client) return;
 
-    const unsubscribe = client.onMessage('event', (msg: any) => {
+    const unsubscribe = client.onMessage('event', (msg: WebSocketMessage) => {
       if (msg.type === 'event') {
-        const { category, action, data } = msg.payload || {};
+        const payload = msg.payload as TerminalEventPayload;
+        const { category, action, data } = payload;
 
         if (category === 'terminal') {
           switch (action) {
             case 'session_created':
+              const sessionData = data as TerminalSessionCreatedData;
               dispatch(addSession({
-                id: data.sessionId,
-                name: data.name,
-                cwd: data.cwd,
-                createdAt: data.createdAt,
-                status: data.status,
+                id: sessionData.sessionId,
+                name: sessionData.name,
+                cwd: sessionData.cwd,
+                createdAt: sessionData.createdAt,
+                status: sessionData.status,
               }));
               dispatch(setLoading(false));
               break;
 
             case 'command_executed':
+              const commandData = data as TerminalCommandExecutedData;
               dispatch(addCommand({
                 id: generateId(),
-                sessionId: data.sessionId,
-                command: data.command,
+                sessionId: commandData.sessionId,
+                command: commandData.command,
                 timestamp: Date.now(),
               }));
               break;
 
             case 'session_closed':
-              dispatch(removeSession(data.sessionId));
+              const closeData = data as TerminalSessionClosedData;
+              dispatch(removeSession(closeData.sessionId));
               break;
 
             case 'sessions_list':
@@ -89,18 +106,20 @@ export const TerminalScreen: React.FC = () => {
               break;
 
             case 'error':
-              dispatch(setError(data.message));
+              const errorData = data as TerminalErrorData;
+              dispatch(setError(errorData.message));
               dispatch(setLoading(false));
               break;
           }
         }
 
         if (category === 'terminal_output') {
+          const outputData = data as TerminalOutputData;
           const output: TerminalOutput = {
-            sessionId: data.sessionId,
-            data: data.data,
-            timestamp: data.timestamp,
-            type: data.type,
+            sessionId: outputData.sessionId,
+            data: outputData.data,
+            timestamp: outputData.timestamp,
+            type: outputData.type,
           };
           dispatch(addOutput(output));
         }
@@ -187,14 +206,7 @@ export const TerminalScreen: React.FC = () => {
         },
       },
     });
-
-    dispatch(addCommand({
-      id: generateId(),
-      sessionId: currentSessionId,
-      command,
-      timestamp: Date.now(),
-    }));
-  }, [connected, currentSessionId, send, dispatch]);
+  }, [connected, currentSessionId, send]);
 
   const handleResize = useCallback((newCols: number, newRows: number) => {
     if (!connected || !currentSessionId) return;
@@ -254,9 +266,6 @@ export const TerminalScreen: React.FC = () => {
       </TouchableOpacity>
     );
   };
-
-  const currentOutputs = currentSessionId ? outputs[currentSessionId] || [] : [];
-  const currentCommands = currentSessionId ? commandHistory[currentSessionId] || [] : [];
 
   return (
     <View style={styles.container}>
