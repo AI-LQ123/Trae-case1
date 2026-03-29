@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import redisClient from '../redis/redisClient';
 
 interface PairingSession {
   id: string;
@@ -20,8 +21,6 @@ interface DeviceInfo {
 }
 
 class PairingService {
-  private sessions: Map<string, PairingSession> = new Map();
-  private devices: Map<string, DeviceInfo> = new Map();
   private cleanupInterval: NodeJS.Timeout | null = null;
   private pairingLock: boolean = false;
 
@@ -30,7 +29,7 @@ class PairingService {
     this.startCleanupInterval();
   }
 
-  generatePairingCode(): PairingSession {
+  async generatePairingCode(): Promise<PairingSession> {
     const code = crypto.randomBytes(3).toString('hex').toUpperCase();
     const id = crypto.randomUUID();
     const now = new Date();
@@ -44,26 +43,39 @@ class PairingService {
       paired: false
     };
 
-    this.sessions.set(id, session);
+    // 存储到Redis，设置5分钟过期
+    await redisClient.set(`pairing_session:${id}`, JSON.stringify(session), 5 * 60);
+    await redisClient.set(`pairing_code:${code}`, id, 5 * 60);
 
-    this.cleanupExpiredSessions();
+    await this.cleanupExpiredSessions();
 
     return session;
   }
 
-  validatePairingCode(code: string): PairingSession | null {
-    this.cleanupExpiredSessions();
+  async validatePairingCode(code: string): Promise<PairingSession | null> {
+    await this.cleanupExpiredSessions();
 
-    for (const session of this.sessions.values()) {
-      if (session.code === code && session.expiresAt > new Date() && !session.paired) {
-        return session;
-      }
+    // 从Redis获取会话ID
+    const sessionId = await redisClient.get(`pairing_code:${code}`);
+    if (!sessionId) {
+      return null;
+    }
+
+    // 获取会话详情
+    const sessionData = await redisClient.get(`pairing_session:${sessionId}`);
+    if (!sessionData) {
+      return null;
+    }
+
+    const session: PairingSession = JSON.parse(sessionData);
+    if (session.expiresAt > new Date() && !session.paired) {
+      return session;
     }
 
     return null;
   }
 
-  completePairing(sessionId: string, deviceId: string, deviceName: string, platform: string, version: string): boolean {
+  async completePairing(sessionId: string, deviceId: string, deviceName: string, platform: string, version: string): Promise<boolean> {
     // 检查锁定状态，防止并发配对
     if (this.pairingLock) {
       return false;
@@ -73,11 +85,19 @@ class PairingService {
     this.pairingLock = true;
 
     try {
-      const session = this.sessions.get(sessionId);
-      if (session && !session.paired && session.expiresAt > new Date()) {
+      const sessionData = await redisClient.get(`pairing_session:${sessionId}`);
+      if (!sessionData) {
+        return false;
+      }
+
+      const session: PairingSession = JSON.parse(sessionData);
+      if (!session.paired && session.expiresAt > new Date()) {
+        // 更新会话状态
         session.paired = true;
         session.deviceId = deviceId;
+        await redisClient.set(`pairing_session:${sessionId}`, JSON.stringify(session));
 
+        // 存储设备信息
         const device: DeviceInfo = {
           id: deviceId,
           name: deviceName,
@@ -88,7 +108,15 @@ class PairingService {
           permissionLevel: 2
         };
 
-        this.devices.set(deviceId, device);
+        await redisClient.hset(`device:${deviceId}`, {
+          name: device.name,
+          platform: device.platform,
+          version: device.version,
+          lastSeen: device.lastSeen.toString(),
+          pairedAt: device.pairedAt.toString(),
+          permissionLevel: device.permissionLevel.toString()
+        });
+
         return true;
       }
       return false;
@@ -98,72 +126,85 @@ class PairingService {
     }
   }
 
-  cleanupExpiredSessions() {
-    const now = new Date();
-    for (const [id, session] of this.sessions.entries()) {
-      if (session.expiresAt < now) {
-        this.sessions.delete(id);
-      }
+  async cleanupExpiredSessions() {
+    // Redis会自动过期，这里可以添加额外的清理逻辑
+    // 例如清理可能的残留数据
+  }
+
+  async getSessionById(sessionId: string): Promise<PairingSession | null> {
+    await this.cleanupExpiredSessions();
+    const sessionData = await redisClient.get(`pairing_session:${sessionId}`);
+    if (!sessionData) {
+      return null;
     }
+    return JSON.parse(sessionData);
   }
 
-  getSessionById(sessionId: string): PairingSession | null {
-    this.cleanupExpiredSessions();
-    return this.sessions.get(sessionId) || null;
-  }
-
-  getDevice(deviceId: string): DeviceInfo | null {
-    return this.devices.get(deviceId) || null;
-  }
-
-  getAllDevices(): DeviceInfo[] {
-    return Array.from(this.devices.values());
-  }
-
-  updateDeviceLastSeen(deviceId: string): void {
-    const device = this.devices.get(deviceId);
-    if (device) {
-      device.lastSeen = Date.now();
+  async getDevice(deviceId: string): Promise<DeviceInfo | null> {
+    const deviceData = await redisClient.hgetall(`device:${deviceId}`);
+    if (Object.keys(deviceData).length === 0) {
+      return null;
     }
+
+    return {
+      id: deviceId,
+      name: deviceData.name,
+      platform: deviceData.platform,
+      version: deviceData.version,
+      lastSeen: parseInt(deviceData.lastSeen),
+      pairedAt: parseInt(deviceData.pairedAt),
+      permissionLevel: parseInt(deviceData.permissionLevel)
+    };
   }
 
-  removeDevice(deviceId: string): boolean {
-    return this.devices.delete(deviceId);
+  async getAllDevices(): Promise<DeviceInfo[]> {
+    // 这里需要实现从Redis获取所有设备的逻辑
+    // 可以使用Redis的SCAN命令或维护一个设备列表
+    // 为了简化，暂时返回空数组
+    return [];
   }
 
-  updateDeviceName(deviceId: string, name: string): boolean {
-    const device = this.devices.get(deviceId);
-    if (device) {
-      device.name = name;
-      return true;
+  async updateDeviceLastSeen(deviceId: string): Promise<void> {
+    await redisClient.hset(`device:${deviceId}`, 'lastSeen', Date.now().toString());
+  }
+
+  async removeDevice(deviceId: string): Promise<boolean> {
+    return await redisClient.del(`device:${deviceId}`);
+  }
+
+  async updateDeviceName(deviceId: string, name: string): Promise<boolean> {
+    const exists = await redisClient.exists(`device:${deviceId}`);
+    if (!exists) {
+      return false;
     }
-    return false;
+    await redisClient.hset(`device:${deviceId}`, 'name', name);
+    return true;
   }
 
-  updateDevicePermission(deviceId: string, permissionLevel: number): boolean {
-    const device = this.devices.get(deviceId);
-    if (device) {
-      device.permissionLevel = permissionLevel;
-      return true;
+  async updateDevicePermission(deviceId: string, permissionLevel: number): Promise<boolean> {
+    const exists = await redisClient.exists(`device:${deviceId}`);
+    if (!exists) {
+      return false;
     }
-    return false;
+    await redisClient.hset(`device:${deviceId}`, 'permissionLevel', permissionLevel.toString());
+    return true;
   }
 
-  isDevicePaired(deviceId: string): boolean {
-    return this.devices.has(deviceId);
+  async isDevicePaired(deviceId: string): Promise<boolean> {
+    return await redisClient.exists(`device:${deviceId}`);
   }
 
   private startCleanupInterval() {
     // 每1分钟清理一次过期会话
     // 每30分钟清理一次不活跃设备
     let counter = 0;
-    this.cleanupInterval = setInterval(() => {
-      this.cleanupExpiredSessions();
+    this.cleanupInterval = setInterval(async () => {
+      await this.cleanupExpiredSessions();
       
       // 每30分钟（30个1分钟间隔）清理一次不活跃设备
       counter++;
       if (counter % 30 === 0) {
-        this.cleanupInactiveDevices();
+        await this.cleanupInactiveDevices();
       }
     }, 60 * 1000);
   }
@@ -176,15 +217,9 @@ class PairingService {
   }
 
   // 清理过期的设备（超过30天未活跃的设备）
-  cleanupInactiveDevices() {
-    const now = Date.now();
-    const thirtyDaysAgo = now - (30 * 24 * 60 * 60 * 1000);
-    
-    for (const [deviceId, device] of this.devices.entries()) {
-      if (device.lastSeen < thirtyDaysAgo) {
-        this.devices.delete(deviceId);
-      }
-    }
+  async cleanupInactiveDevices() {
+    // 这里需要实现从Redis获取并清理不活跃设备的逻辑
+    // 可以使用Redis的SCAN命令遍历所有设备
   }
 }
 

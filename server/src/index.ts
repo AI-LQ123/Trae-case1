@@ -41,7 +41,7 @@ app.get('/health', (req, res) => {
 });
 
 // Auth API routes
-app.post('/api/auth/pair', authLimiter, (req, res) => {
+app.post('/api/auth/pair', authLimiter, async (req, res) => {
   const { code, deviceId, deviceName, platform, version } = req.body;
   
   if (!code || !deviceId) {
@@ -52,7 +52,7 @@ app.post('/api/auth/pair', authLimiter, (req, res) => {
     });
   }
 
-  const session = pairingService.validatePairingCode(code);
+  const session = await pairingService.validatePairingCode(code);
   if (!session) {
     return res.status(400).json({
       success: false,
@@ -61,7 +61,7 @@ app.post('/api/auth/pair', authLimiter, (req, res) => {
     });
   }
 
-  const success = pairingService.completePairing(
+  const success = await pairingService.completePairing(
     session.id, 
     deviceId, 
     deviceName || 'Unknown Device', 
@@ -96,7 +96,7 @@ app.post('/api/auth/pair', authLimiter, (req, res) => {
   });
 });
 
-app.post('/api/auth/refresh', (req, res) => {
+app.post('/api/auth/refresh', async (req, res) => {
   const { refreshToken } = req.body;
   
   if (!refreshToken) {
@@ -107,7 +107,7 @@ app.post('/api/auth/refresh', (req, res) => {
     });
   }
 
-  const result = tokenManager.refreshToken(refreshToken);
+  const result = await tokenManager.refreshToken(refreshToken);
   if (!result) {
     return res.status(401).json({
       success: false,
@@ -129,19 +129,19 @@ app.get('/api/auth/validate', authMiddleware, (req: AuthenticatedRequest, res) =
   });
 });
 
-app.post('/api/auth/generate-code', authLimiter, (req, res) => {
-  const session = pairingService.generatePairingCode();
+app.post('/api/auth/generate-code', authLimiter, async (req, res) => {
+  const session = await pairingService.generatePairingCode();
   res.json({
     success: true,
     data: { code: session.code, sessionId: session.id }
   });
 });
 
-app.post('/api/auth/logout', authMiddleware, (req, res) => {
+app.post('/api/auth/logout', authMiddleware, async (req, res) => {
   const authHeader = req.headers.authorization;
   if (authHeader) {
     const token = authHeader.replace('Bearer ', '');
-    tokenManager.revokeToken(token);
+    await tokenManager.revokeToken(token);
   }
   
   res.json({

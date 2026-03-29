@@ -65,16 +65,19 @@ cd ../client && npm install
 # Windows (PowerShell)
 $env:JWT_SECRET="your-secure-jwt-secret-key"
 $env:JWT_REFRESH_SECRET="your-secure-refresh-secret-key"
+$env:REDIS_URL="redis://localhost:6379"  # Redis连接地址
 
 # macOS/Linux (bash)
 export JWT_SECRET="your-secure-jwt-secret-key"
 export JWT_REFRESH_SECRET="your-secure-refresh-secret-key"
+export REDIS_URL="redis://localhost:6379"  # Redis连接地址
 ```
 
 **建议：**
 - 使用强随机密钥（至少32字符）
 - 生产环境中使用环境变量管理工具
 - 不要硬编码密钥到代码中
+- 生产环境中使用Redis集群或哨兵模式确保高可用性
 
 ### 启动开发服务器
 

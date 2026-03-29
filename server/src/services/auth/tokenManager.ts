@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
+import redisClient from '../redis/redisClient';
 
 export interface TokenPayload {
   deviceId: string;
@@ -16,10 +17,6 @@ export interface RefreshTokenPayload {
 class TokenManager {
   private secretKey: string;
   private refreshSecretKey: string;
-  private revokedTokens: Set<string> = new Set();
-  private deviceBlacklist: Set<string> = new Set();
-  private deviceTokens: Map<string, Set<string>> = new Map();
-  private usedRefreshTokens: Set<string> = new Set();
 
   constructor() {
     this.secretKey = process.env.JWT_SECRET as string;
@@ -47,10 +44,10 @@ class TokenManager {
     return refreshToken;
   }
 
-  verifyToken(token: string): TokenPayload | null {
+  async verifyToken(token: string): Promise<TokenPayload | null> {
     try {
       const decoded = jwt.verify(token, this.secretKey) as TokenPayload;
-      if (this.isTokenRevoked(token) || this.isDeviceBlacklisted(decoded.deviceId)) {
+      if (await this.isTokenRevoked(token) || await this.isDeviceBlacklisted(decoded.deviceId)) {
         return null;
       }
       return decoded;
@@ -59,10 +56,10 @@ class TokenManager {
     }
   }
 
-  verifyRefreshToken(token: string): RefreshTokenPayload | null {
+  async verifyRefreshToken(token: string): Promise<RefreshTokenPayload | null> {
     try {
       const decoded = jwt.verify(token, this.refreshSecretKey) as RefreshTokenPayload;
-      if (this.isTokenRevoked(token) || this.isDeviceBlacklisted(decoded.deviceId)) {
+      if (await this.isTokenRevoked(token) || await this.isDeviceBlacklisted(decoded.deviceId)) {
         return null;
       }
       return decoded;
@@ -79,35 +76,39 @@ class TokenManager {
     }
   }
 
-  revokeToken(token: string): void {
-    this.revokedTokens.add(token);
+  async revokeToken(token: string): Promise<void> {
+    // 设置令牌过期时间为7天（与刷新令牌一致）
+    await redisClient.sadd('revoked_tokens', token);
+    await redisClient.expire('revoked_tokens', 7 * 24 * 60 * 60);
   }
 
-  revokeAllDeviceTokens(deviceId: string): void {
-    const tokens = this.deviceTokens.get(deviceId);
-    if (tokens) {
-      tokens.forEach(token => this.revokeToken(token));
+  async revokeAllDeviceTokens(deviceId: string): Promise<void> {
+    const tokens = await this.getDeviceTokens(deviceId);
+    for (const token of tokens) {
+      await this.revokeToken(token);
     }
   }
 
-  blacklistDevice(deviceId: string): void {
-    this.deviceBlacklist.add(deviceId);
-    this.revokeAllDeviceTokens(deviceId);
+  async blacklistDevice(deviceId: string): Promise<void> {
+    await redisClient.sadd('device_blacklist', deviceId);
+    await this.revokeAllDeviceTokens(deviceId);
   }
 
-  removeDeviceFromBlacklist(deviceId: string): void {
-    this.deviceBlacklist.delete(deviceId);
+  async removeDeviceFromBlacklist(deviceId: string): Promise<void> {
+    await redisClient.srem('device_blacklist', deviceId);
   }
 
-  isDeviceBlacklisted(deviceId: string): boolean {
-    return this.deviceBlacklist.has(deviceId);
+  async isDeviceBlacklisted(deviceId: string): Promise<boolean> {
+    return await redisClient.sismember('device_blacklist', deviceId);
   }
 
-  isTokenRevoked(token: string): boolean {
-    return this.revokedTokens.has(token) || this.usedRefreshTokens.has(token);
+  async isTokenRevoked(token: string): Promise<boolean> {
+    const isRevoked = await redisClient.sismember('revoked_tokens', token);
+    const isUsed = await redisClient.sismember('used_refresh_tokens', token);
+    return isRevoked || isUsed;
   }
 
-  refreshToken(oldRefreshToken: string): { token: string; refreshToken: string } | null {
+  async refreshToken(oldRefreshToken: string): Promise<{ token: string; refreshToken: string } | null> {
     try {
       // 验证旧的刷新令牌
       const decoded = this.verifyRefreshToken(oldRefreshToken);
@@ -116,15 +117,17 @@ class TokenManager {
       }
 
       // 检查刷新令牌是否已经被使用过
-      if (this.usedRefreshTokens.has(oldRefreshToken)) {
+      const isUsed = await redisClient.sismember('used_refresh_tokens', oldRefreshToken);
+      if (isUsed) {
         return null;
       }
 
       // 标记旧的刷新令牌为已使用
-      this.usedRefreshTokens.add(oldRefreshToken);
+      await redisClient.sadd('used_refresh_tokens', oldRefreshToken);
+      await redisClient.expire('used_refresh_tokens', 7 * 24 * 60 * 60);
 
       // 吊销旧的刷新令牌
-      this.revokeToken(oldRefreshToken);
+      await this.revokeToken(oldRefreshToken);
 
       // 生成新的令牌负载
       const payload: TokenPayload = {
@@ -139,15 +142,18 @@ class TokenManager {
 
       return { token: newToken, refreshToken: newRefreshToken };
     } catch (error) {
+      console.error('Token refresh error:', error);
       return null;
     }
   }
 
-  private addTokenToDevice(deviceId: string, token: string): void {
-    if (!this.deviceTokens.has(deviceId)) {
-      this.deviceTokens.set(deviceId, new Set());
-    }
-    this.deviceTokens.get(deviceId)!.add(token);
+  private async addTokenToDevice(deviceId: string, token: string): Promise<void> {
+    await redisClient.sadd(`device_tokens:${deviceId}`, token);
+    await redisClient.expire(`device_tokens:${deviceId}`, 7 * 24 * 60 * 60);
+  }
+
+  private async getDeviceTokens(deviceId: string): Promise<string[]> {
+    return await redisClient.smembers(`device_tokens:${deviceId}`);
   }
 
   private generateJti(): string {

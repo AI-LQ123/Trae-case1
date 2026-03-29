@@ -13,7 +13,7 @@ interface ApiResponse {
   data?: any;
 }
 
-export const authMiddleware = (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+export const authMiddleware = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) {
     return res.status(401).json({
@@ -24,7 +24,7 @@ export const authMiddleware = (req: AuthenticatedRequest, res: Response, next: N
   }
 
   const token = authHeader.replace('Bearer ', '');
-  const payload = tokenManager.verifyToken(token);
+  const payload = await tokenManager.verifyToken(token);
   if (!payload) {
     return res.status(401).json({
       success: false,
@@ -38,7 +38,7 @@ export const authMiddleware = (req: AuthenticatedRequest, res: Response, next: N
 };
 
 export const authMiddlewareWithRoles = (requiredRoles: string[]) => {
-  return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  return async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     const authHeader = req.headers.authorization;
     if (!authHeader) {
       return res.status(401).json({
@@ -49,7 +49,7 @@ export const authMiddlewareWithRoles = (requiredRoles: string[]) => {
     }
 
     const token = authHeader.replace('Bearer ', '');
-    const payload = tokenManager.verifyToken(token);
+    const payload = await tokenManager.verifyToken(token);
     if (!payload) {
       return res.status(401).json({
         success: false,
@@ -71,12 +71,12 @@ export const authMiddlewareWithRoles = (requiredRoles: string[]) => {
   };
 };
 
-export const websocketAuthMiddleware = (token: string): TokenPayload | null => {
-  return tokenManager.verifyToken(token);
+export const websocketAuthMiddleware = async (token: string): Promise<TokenPayload | null> => {
+  return await tokenManager.verifyToken(token);
 };
 
-export const websocketAuthHandler = (token: string, callback: (error: Error | null, payload: any) => void) => {
-  const payload = tokenManager.verifyToken(token);
+export const websocketAuthHandler = async (token: string, callback: (error: Error | null, payload: any) => void) => {
+  const payload = await tokenManager.verifyToken(token);
   if (!payload) {
     callback(new Error('Invalid or expired token'), null);
   } else {

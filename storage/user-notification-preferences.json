@@ -1,0 +1,11 @@
+{
+  "test-device-123": {
+    "deviceId": "test-device-123",
+    "preferences": {
+      "mention": true,
+      "error": false,
+      "system": true
+    },
+    "lastUpdated": 1774761663384
+  }
+}
