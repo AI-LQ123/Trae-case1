@@ -18,11 +18,33 @@ export interface HistoryItem {
   data: ChatSession | Task | TerminalCommand;
 }
 
+export interface SearchResult {
+  items: HistoryItem[];
+  total: number;
+  hasMore: boolean;
+}
+
 const STORAGE_KEYS = {
   CHAT_HISTORY: '@trae_chat_history',
   TASK_HISTORY: '@trae_task_history',
   TERMINAL_HISTORY: '@trae_terminal_history',
 };
+
+const DEFAULT_PREVIEW_LENGTH = 100;
+const DEFAULT_SEARCH_LIMIT = 20;
+
+function smartTruncate(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  
+  const truncated = text.substring(0, maxLength);
+  const lastSpaceIndex = truncated.lastIndexOf(' ');
+  
+  if (lastSpaceIndex > maxLength * 0.5) {
+    return truncated.substring(0, lastSpaceIndex) + '...';
+  }
+  
+  return truncated + '...';
+}
 
 export class HistoryManager {
   private static instance: HistoryManager;
@@ -126,7 +148,12 @@ export class HistoryManager {
     }
   }
 
-  async searchHistory(query: string, types?: HistoryType[]): Promise<HistoryItem[]> {
+  async searchHistory(
+    query: string, 
+    types?: HistoryType[],
+    limit: number = DEFAULT_SEARCH_LIMIT,
+    offset: number = 0
+  ): Promise<SearchResult> {
     try {
       const results: HistoryItem[] = [];
       const searchQuery = query.toLowerCase();
@@ -142,7 +169,7 @@ export class HistoryManager {
 
           if (shouldInclude) {
             const preview = session.messages && session.messages.length > 0
-              ? session.messages[session.messages.length - 1].content.substring(0, 100)
+              ? smartTruncate(session.messages[session.messages.length - 1].content, DEFAULT_PREVIEW_LENGTH)
               : '';
             results.push({
               id: session.id,
@@ -169,7 +196,7 @@ export class HistoryManager {
               id: task.id,
               type: HistoryType.TASK,
               title: task.name,
-              preview: task.command.substring(0, 100),
+              preview: smartTruncate(task.command, DEFAULT_PREVIEW_LENGTH),
               timestamp: task.completedAt || task.createdAt,
               data: task,
             });
@@ -185,7 +212,7 @@ export class HistoryManager {
               id: command.id,
               type: HistoryType.TERMINAL,
               title: command.command,
-              preview: command.command,
+              preview: smartTruncate(command.command, DEFAULT_PREVIEW_LENGTH),
               timestamp: command.timestamp,
               data: command,
             });
@@ -193,10 +220,23 @@ export class HistoryManager {
         });
       }
 
-      return results.sort((a, b) => b.timestamp - a.timestamp);
+      const sortedResults = results.sort((a, b) => b.timestamp - a.timestamp);
+      const total = sortedResults.length;
+      const paginatedItems = sortedResults.slice(offset, offset + limit);
+      const hasMore = offset + limit < total;
+
+      return {
+        items: paginatedItems,
+        total,
+        hasMore,
+      };
     } catch (error) {
       console.error('Error searching history:', error);
-      return [];
+      return {
+        items: [],
+        total: 0,
+        hasMore: false,
+      };
     }
   }
 

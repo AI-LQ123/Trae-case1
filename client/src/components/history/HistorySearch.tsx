@@ -10,7 +10,7 @@ import {
   Alert,
 } from 'react-native';
 import { Colors } from '../../constants/colors';
-import historyManager, { HistoryType, HistoryItem } from '../../services/storage/historyManager';
+import historyManager, { HistoryType, HistoryItem, SearchResult } from '../../services/storage/historyManager';
 
 interface HistorySearchProps {
   onSelectItem?: (item: HistoryItem) => void;
@@ -127,35 +127,73 @@ export const HistorySearch: React.FC<HistorySearchProps> = ({
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [filter, setFilter] = useState<FilterType>('all');
   const [hasSearched, setHasSearched] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [offset, setOffset] = useState(0);
+  const [total, setTotal] = useState(0);
 
-  const performSearch = useCallback(async (searchQuery: string, searchFilter: FilterType) => {
+  const performSearch = useCallback(async (
+    searchQuery: string, 
+    searchFilter: FilterType,
+    searchOffset: number = 0,
+    append: boolean = false
+  ) => {
     if (!searchQuery.trim()) {
       setResults([]);
       setHasSearched(false);
+      setHasMore(false);
+      setOffset(0);
+      setTotal(0);
       return;
     }
 
-    setLoading(true);
+    if (append) {
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+    }
+
     try {
       const types = searchFilter === 'all' 
         ? undefined
         : [searchFilter as HistoryType];
-      const searchResults = await historyManager.searchHistory(searchQuery, types);
-      setResults(searchResults);
+      const searchResults: SearchResult = await historyManager.searchHistory(
+        searchQuery, 
+        types,
+        20,
+        searchOffset
+      );
+      
+      if (append) {
+        setResults(prev => [...prev, ...searchResults.items]);
+      } else {
+        setResults(searchResults.items);
+      }
+      
       setHasSearched(true);
+      setHasMore(searchResults.hasMore);
+      setOffset(searchOffset + searchResults.items.length);
+      setTotal(searchResults.total);
     } catch (error) {
       console.error('Search error:', error);
       Alert.alert('搜索失败', '搜索历史记录时出错，请重试');
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   }, []);
 
+  const loadMore = useCallback(() => {
+    if (hasMore && !loadingMore) {
+      performSearch(query, filter, offset, true);
+    }
+  }, [hasMore, loadingMore, query, filter, offset, performSearch]);
+
   useEffect(() => {
     const debounceTimer = setTimeout(() => {
-      performSearch(query, filter);
+      performSearch(query, filter, 0, false);
     }, 300);
 
     return () => clearTimeout(debounceTimer);
@@ -165,6 +203,9 @@ export const HistorySearch: React.FC<HistorySearchProps> = ({
     setQuery('');
     setResults([]);
     setHasSearched(false);
+    setHasMore(false);
+    setOffset(0);
+    setTotal(0);
   };
 
   const handleFilterChange = (newFilter: FilterType) => {
@@ -251,18 +292,40 @@ export const HistorySearch: React.FC<HistorySearchProps> = ({
         </View>
       ) : hasSearched ? (
         results.length > 0 ? (
-          <FlatList
-            data={results}
-            keyExtractor={(item) => `${item.type}-${item.id}`}
-            renderItem={({ item }) => (
-              <HistoryItemCard
-                item={item}
-                onPress={() => onSelectItem?.(item)}
-              />
-            )}
-            contentContainerStyle={styles.resultsList}
-            showsVerticalScrollIndicator={false}
-          />
+          <>
+            <View style={styles.resultsHeader}>
+              <Text style={styles.resultsCount}>
+                共找到 {total} 条记录
+              </Text>
+            </View>
+            <FlatList
+              data={results}
+              keyExtractor={(item) => `${item.type}-${item.id}`}
+              renderItem={({ item }) => (
+                <HistoryItemCard
+                  item={item}
+                  onPress={() => onSelectItem?.(item)}
+                />
+              )}
+              onEndReached={loadMore}
+              onEndReachedThreshold={0.5}
+              ListFooterComponent={
+                hasMore ? (
+                  <View style={styles.loadMoreContainer}>
+                    {loadingMore ? (
+                      <ActivityIndicator size="small" color={Colors.primary} />
+                    ) : (
+                      <TouchableOpacity style={styles.loadMoreButton} onPress={loadMore}>
+                        <Text style={styles.loadMoreText}>加载更多</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                ) : null
+              }
+              contentContainerStyle={styles.resultsList}
+              showsVerticalScrollIndicator={false}
+            />
+          </>
         ) : (
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyIcon}>🔍</Text>
@@ -424,6 +487,32 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: Colors.light.textSecondary,
     textAlign: 'center',
+  },
+  resultsHeader: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: Colors.light.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.light.border,
+  },
+  resultsCount: {
+    fontSize: 13,
+    color: Colors.light.textSecondary,
+  },
+  loadMoreContainer: {
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  loadMoreButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    backgroundColor: Colors.primary,
+    borderRadius: 20,
+  },
+  loadMoreText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#FFFFFF',
   },
 });
 
