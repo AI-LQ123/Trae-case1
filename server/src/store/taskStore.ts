@@ -85,17 +85,21 @@ export class TaskStore {
     return deleted;
   }
 
-  getAllTasks(page: number = 1, pageSize: number = 100): Task[] {
+  getAllTasks(page?: number, pageSize?: number): Task[] {
     const tasks = Array.from(this.tasks.values());
     
-    if (page < 1) page = 1;
-    if (pageSize < 1) pageSize = 100;
-    if (pageSize > 1000) pageSize = 1000;
+    if (page !== undefined && pageSize !== undefined) {
+      if (page < 1) page = 1;
+      if (pageSize < 1) pageSize = 100;
+      if (pageSize > 1000) pageSize = 1000;
+      
+      const startIndex = (page - 1) * pageSize;
+      const endIndex = startIndex + pageSize;
+      
+      return tasks.slice(startIndex, endIndex).sort((a, b) => b.createdAt - a.createdAt);
+    }
     
-    const startIndex = (page - 1) * pageSize;
-    const endIndex = startIndex + pageSize;
-    
-    return tasks.slice(startIndex, endIndex).sort((a, b) => b.createdAt - a.createdAt);
+    return tasks.sort((a, b) => b.createdAt - a.createdAt);
   }
 
   getTasksByStatus(status: Task['status']): Task[] {

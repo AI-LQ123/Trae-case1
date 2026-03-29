@@ -8,6 +8,7 @@ import { AuthHandler } from './handlers/authHandler';
 import { ChatMessageHandler } from './handlers/chatMessageHandler';
 import { TaskHandler } from './handlers/taskHandler';
 import { TerminalHandler } from './handlers/terminalHandler';
+import { SyncHandler } from './handlers/syncHandler';
 import { logger } from '../utils/logger';
 
 export class WebSocketServer {
@@ -50,6 +51,8 @@ export class WebSocketServer {
     this.registerTaskHandler();
     // Register terminal handler
     this.registerTerminalHandler();
+    // Register sync handler
+    this.registerSyncHandler();
 
     this.setupWebSocketServer();
     this.startHeartbeat();
@@ -85,6 +88,14 @@ export class WebSocketServer {
     const terminalHandler = new TerminalHandler(this.connectionManager);
     this.messageRouter.registerCommandHandler('terminal', terminalHandler);
     logger.info('Terminal handler registered', {
+      context: 'WebSocketServer',
+    });
+  }
+
+  private registerSyncHandler(): void {
+    const syncHandler = new SyncHandler(this.connectionManager);
+    this.messageRouter.registerCommandHandler('sync', syncHandler);
+    logger.info('Sync handler registered', {
       context: 'WebSocketServer',
     });
   }

@@ -23,7 +23,7 @@ export type MessagePayload =
   | ErrorPayload;
 
 export interface CommandPayload {
-  category: 'ai_chat' | 'terminal' | 'task' | 'file';
+  category: 'ai_chat' | 'terminal' | 'task' | 'file' | 'sync';
   action: string;
   data: Record<string, unknown>;
 }

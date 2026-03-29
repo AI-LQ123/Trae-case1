@@ -125,18 +125,29 @@ export class ChatStore {
     await this.saveSessions();
   }
 
-  getAllSessions(page: number = 1, pageSize: number = 100): ChatSession[] {
+  getAllSessions(page?: number, pageSize?: number): ChatSession[] {
     const sessions = Array.from(this.sessions.values());
     
-    // 添加分页支持
-    if (page < 1) page = 1;
-    if (pageSize < 1) pageSize = 100;
-    if (pageSize > 1000) pageSize = 1000; // 限制最大页大小
+    if (page !== undefined && pageSize !== undefined) {
+      if (page < 1) page = 1;
+      if (pageSize < 1) pageSize = 100;
+      if (pageSize > 1000) pageSize = 1000;
+      
+      const startIndex = (page - 1) * pageSize;
+      const endIndex = startIndex + pageSize;
+      
+      return sessions.slice(startIndex, endIndex);
+    }
     
-    const startIndex = (page - 1) * pageSize;
-    const endIndex = startIndex + pageSize;
-    
-    return sessions.slice(startIndex, endIndex);
+    return sessions;
+  }
+
+  getAllMessages(): any[] {
+    const messages: any[] = [];
+    for (const session of this.sessions.values()) {
+      messages.push(...session.messages);
+    }
+    return messages;
   }
 
   // 清理过期会话（超过30天的会话）
