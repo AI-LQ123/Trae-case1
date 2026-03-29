@@ -6,10 +6,13 @@ import {
   StyleSheet,
   ScrollView,
   Modal,
+  Alert,
 } from 'react-native';
-import { useDispatch } from 'react-redux';
+import { useSelector, useDispatch } from 'react-redux';
 import { addMessage } from '../../state/slices/chatSlice';
 import { addCommand } from '../../state/slices/terminalSlice';
+import { setMenuVisibility } from '../../state/slices/quickCommandsSlice';
+import { RootState } from '../../state/store';
 
 interface CommandItem {
   id: string;
@@ -20,76 +23,55 @@ interface CommandItem {
 }
 
 interface QuickCommandsMenuProps {
-  visible: boolean;
-  onClose: () => void;
+  // 组件现在使用Redux状态，不需要这些props
 }
 
-const QuickCommandsMenu: React.FC<QuickCommandsMenuProps> = ({ visible, onClose }) => {
+const QuickCommandsMenu: React.FC<QuickCommandsMenuProps> = () => {
   const dispatch = useDispatch();
+  const visible = useSelector((state: RootState) => state.quickCommands.isMenuVisible);
+  const commands = useSelector((state: RootState) => state.quickCommands.commands);
+  const currentSessionId = useSelector((state: RootState) => state.terminal.currentSessionId);
+  const chatSessionId = useSelector((state: RootState) => state.chat.currentSessionId);
+  const isWebSocketConnected = useSelector((state: RootState) => state.websocket.connected);
 
-  const commands: CommandItem[] = [
-    {
-      id: '1',
-      title: '查看项目结构',
-      description: '显示当前项目的文件树结构',
-      type: 'terminal',
-      content: 'ls -la',
-    },
-    {
-      id: '2',
-      title: '运行测试',
-      description: '执行项目的测试套件',
-      type: 'terminal',
-      content: 'npm test',
-    },
-    {
-      id: '3',
-      title: '构建项目',
-      description: '构建生产版本',
-      type: 'terminal',
-      content: 'npm run build',
-    },
-    {
-      id: '4',
-      title: '代码解释',
-      description: '请解释选中的代码',
-      type: 'chat',
-      content: '请解释以下代码的功能和实现原理：',
-    },
-    {
-      id: '5',
-      title: '代码优化',
-      description: '优化选中的代码',
-      type: 'chat',
-      content: '请优化以下代码，提高性能和可读性：',
-    },
-    {
-      id: '6',
-      title: '错误分析',
-      description: '分析错误信息',
-      type: 'chat',
-      content: '请分析以下错误信息并提供解决方案：',
-    },
-  ];
+  // 从Redux获取指令数据，不再硬编码
+  // 生成唯一ID的函数
+  const generateId = () => {
+    return Math.random().toString(36).substr(2, 9);
+  };
 
   const handleCommandPress = (command: CommandItem) => {
+    // 检查网络连接
+    if (!isWebSocketConnected) {
+      Alert.alert('无法执行', '网络连接未建立，请检查连接状态');
+      return;
+    }
+
+    // 检查会话ID
+    const targetSessionId = command.type === 'chat' ? chatSessionId : currentSessionId;
+    if (!targetSessionId) {
+      Alert.alert('无法执行', command.type === 'chat' ? '没有活动的聊天会话' : '没有活动的终端会话');
+      return;
+    }
+
     if (command.type === 'chat') {
       dispatch(addMessage({
-        id: Date.now().toString(),
-        sessionId: 'current',
+        id: generateId(),
+        sessionId: targetSessionId,
         role: 'user',
         content: command.content,
         timestamp: Date.now(),
       }));
     } else if (command.type === 'terminal') {
       dispatch(addCommand({
-        id: Date.now().toString(),
-        sessionId: 'current',
+        id: generateId(),
+        sessionId: targetSessionId,
         command: command.content,
         timestamp: Date.now(),
       }));
     }
-    onClose();
+    // 使用Redux action关闭菜单
+    dispatch(setMenuVisibility(false));
   };
 
   return (
@@ -97,17 +79,17 @@ const QuickCommandsMenu: React.FC<QuickCommandsMenuProps> = ({ visible, onClose 
       visible={visible}
       transparent
       animationType="slide"
-      onRequestClose={onClose}
+      onRequestClose={() => dispatch(setMenuVisibility(false))}
     >
       <TouchableOpacity
         style={styles.overlay}
         activeOpacity={1}
-        onPress={onClose}
+        onPress={() => dispatch(setMenuVisibility(false))}
       >
         <View style={styles.container}>
           <View style={styles.header}>
             <Text style={styles.title}>快捷指令</Text>
-            <TouchableOpacity onPress={onClose}>
+            <TouchableOpacity onPress={() => dispatch(setMenuVisibility(false))}>
               <Text style={styles.closeButton}>关闭</Text>
             </TouchableOpacity>
           </View>
