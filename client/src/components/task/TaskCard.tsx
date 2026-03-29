@@ -6,7 +6,7 @@ export interface Task {
   id: string;
   name: string;
   command: string;
-  status: 'pending' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
   progress: number;
   priority?: 'low' | 'medium' | 'high';
   createdAt: number;
