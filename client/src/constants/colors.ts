@@ -5,6 +5,11 @@ export const Colors = {
   warning: '#FF9500',
   danger: '#FF3B30',
   info: '#5AC8FA',
+  primaryLight: '#E8F4FF',
+  successLight: '#E8F5E8',
+  errorLight: '#FFEBEE',
+  statusOnline: '#34C759',
+  statusOffline: '#FF3B30',
 
   light: {
     background: '#F2F2F7',
