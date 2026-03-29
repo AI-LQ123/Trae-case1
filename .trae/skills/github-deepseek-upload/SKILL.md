@@ -270,6 +270,26 @@ The conversation history recording should be integrated into the main document u
    git ls-files | Select-String -Pattern "pattern"
    ```
 
+7. **Browser Instance Conflict**: Using Chrome DevTools MCP tool causes browser conflict
+   - **Problem**: 
+     ```
+     The browser is already running for C:\\Users\\15389\\.cache\\chrome-devtools-mcp\\chrome-profile
+     Use --isolated to run multiple browser instances.
+     ```
+   - **Root Cause**: 
+     - `mcp_Chrome_DevTools_MCP` tool uses fixed user data directory
+     - Only allows one browser instance to run at a time
+     - Cannot reuse existing browser sessions
+   - **Solution**: Use `browser_use` tool instead of `mcp_Chrome_DevTools_MCP`
+     - `browser_use` can detect and reuse existing browser tabs
+     - No browser instance conflict issues
+     - Perfect for DeepSeek since it requires logged-in state
+   - **Implementation**:
+     ```
+     # Instead of: mcp_Chrome_DevTools_MCP_navigate
+     # Use: browser_use tool with description and query
+     ```
+
 ### Verified Successful Solutions
 
 1. **PowerShell Compatibility**: Using separate git commands instead of `&&` syntax
@@ -290,6 +310,12 @@ The conversation history recording should be integrated into the main document u
    git ls-files | Select-String -Pattern "websocket|\.test\.ts"
    ```
 
+10. **Browser Tool Selection**: Using `browser_use` instead of `mcp_Chrome_DevTools_MCP` for DeepSeek interaction
+    - **Problem**: Browser instance conflict when using Chrome DevTools MCP
+    - **Solution**: `browser_use` tool can reuse existing browser tabs and sessions
+    - **Result**: Successfully sent message to DeepSeek without browser conflict
+    - **Key Insight**: `browser_use` is better suited for DeepSeek since it maintains logged-in state
+
 ### Key Lessons Learned
 
 - **Platform Awareness**: Different shells have different syntax requirements
@@ -306,6 +332,18 @@ The conversation history recording should be integrated into the main document u
   - `grep` → `Select-String`
   - `&&` → Execute commands separately or use `;` separator
   - Always verify command availability in PowerShell before use
+
+- **Browser Tool Selection**:
+  - **For DeepSeek interaction**: Always use `browser_use` tool, not `mcp_Chrome_DevTools_MCP`
+  - **Why**: `browser_use` can detect and reuse existing browser tabs, maintains logged-in state
+  - **Avoid**: `mcp_Chrome_DevTools_MCP` uses fixed user data directory, causes browser conflicts
+  - **Best Practice**: Choose the right tool for the specific use case based on tool capabilities
+
+- **Tool Capability Awareness**:
+  - Different tools have different strengths and limitations
+  - `mcp_Chrome_DevTools_MCP`: Good for isolated browser testing
+  - `browser_use`: Better for interactive sessions requiring login state
+  - Always check tool documentation before choosing which tool to use
 
 ## Expected Outcome
 

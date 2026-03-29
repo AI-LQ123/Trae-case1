@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -27,18 +27,20 @@ export const TasksScreen: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [currentFilter, setCurrentFilter] = useState<FilterType>('all');
 
-  const filteredTasks = activeTasks.filter(task => {
-    switch (currentFilter) {
-      case 'active':
-        return ['pending', 'running'].includes(task.status);
-      case 'completed':
-        return task.status === 'completed';
-      case 'failed':
-        return ['failed', 'cancelled'].includes(task.status);
-      default:
-        return true;
-    }
-  });
+  const filteredTasks = useMemo(() => {
+    return activeTasks.filter(task => {
+      switch (currentFilter) {
+        case 'active':
+          return ['pending', 'running'].includes(task.status);
+        case 'completed':
+          return task.status === 'completed';
+        case 'failed':
+          return ['failed', 'cancelled'].includes(task.status);
+        default:
+          return true;
+      }
+    });
+  }, [activeTasks, currentFilter]);
 
   const fetchTasks = async () => {
     dispatch(setLoading(true));
@@ -57,15 +59,15 @@ export const TasksScreen: React.FC = () => {
     setRefreshing(false);
   };
 
-  const handleTaskPress = (task: Task) => {
+  const handleTaskPress = useCallback((task: Task) => {
     Alert.alert(
       task.name,
       `命令: ${task.command}\n状态: ${task.status}\n进度: ${task.progress}%`,
       [{ text: '确定' }]
     );
-  };
+  }, []);
 
-  const handleCancelTask = (taskId: string) => {
+  const handleCancelTask = useCallback((taskId: string) => {
     Alert.alert(
       '取消任务',
       '确定要取消这个任务吗？',
@@ -75,14 +77,14 @@ export const TasksScreen: React.FC = () => {
           text: '确定',
           style: 'destructive',
           onPress: () => {
-            console.log('Cancel task:', taskId);
+            dispatch(updateTask({ id: taskId, status: 'cancelled' }));
           },
         },
       ]
     );
-  };
+  }, [dispatch]);
 
-  const renderFilterButton = (filter: FilterType, label: string) => (
+  const renderFilterButton = useCallback((filter: FilterType, label: string) => (
     <TouchableOpacity
       style={[
         styles.filterButton,
@@ -99,9 +101,9 @@ export const TasksScreen: React.FC = () => {
         {label}
       </Text>
     </TouchableOpacity>
-  );
+  ), [currentFilter]);
 
-  const renderEmptyState = () => (
+  const renderEmptyState = useCallback(() => (
     <View style={styles.emptyContainer}>
       <Text style={styles.emptyTitle}>暂无任务</Text>
       <Text style={styles.emptySubtitle}>
@@ -110,7 +112,7 @@ export const TasksScreen: React.FC = () => {
           : `当前筛选条件下没有任务`}
       </Text>
     </View>
-  );
+  ), [currentFilter]);
 
   useEffect(() => {
     fetchTasks();

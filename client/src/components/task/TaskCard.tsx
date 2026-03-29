@@ -1,36 +1,9 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ProgressBarAndroid, Platform, ViewStyle } from 'react-native';
 import { Colors } from '../../constants/colors';
+import { Task, TaskStep } from '../../types/task';
 
-export interface Task {
-  id: string;
-  name: string;
-  command: string;
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
-  progress: number;
-  priority?: 'low' | 'medium' | 'high';
-  createdAt: number;
-  startedAt?: number;
-  completedAt?: number;
-  output?: string;
-  error?: string;
-  metadata?: {
-    estimatedTime?: number;
-    remainingTime?: number;
-    steps?: TaskStep[];
-  };
-}
-
-interface TaskStep {
-  id: string;
-  name: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
-  progress: number;
-  startTime?: number;
-  endTime?: number;
-  output?: string;
-  error?: string;
-}
+export type { Task, TaskStep };
 
 interface TaskCardProps {
   task: Task;
