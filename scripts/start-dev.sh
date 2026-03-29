@@ -1,0 +1,12 @@
+#!/bin/bash
+
+echo "Starting development environment..."
+
+echo "Starting Redis..."
+docker-compose up -d redis
+
+echo "Installing dependencies..."
+npm install
+
+echo "Starting server in development mode..."
+npm run dev:server
