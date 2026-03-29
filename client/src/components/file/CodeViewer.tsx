@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo } from 'react';
-import { View, ScrollView, StyleSheet, Dimensions, Text } from 'react-native';
+import { View, FlatList, StyleSheet, Dimensions, Text } from 'react-native';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -18,13 +18,6 @@ export const CodeViewer: React.FC<CodeViewerProps> = ({
   showLineNumbers = true,
   wrapLines: _wrapLines,
 }) => {
-  const formatLineNumbers = useCallback((text: string): string[] => {
-    const lines = text.split('\n');
-    return lines.map((_, index) => (index + 1).toString());
-  }, []);
-
-  const lineNumbers = useMemo(() => formatLineNumbers(content), [content, formatLineNumbers]);
-
   if (!content || content.trim() === '') {
     return (
       <View style={styles.emptyContainer}>
@@ -33,34 +26,44 @@ export const CodeViewer: React.FC<CodeViewerProps> = ({
     );
   }
 
+  const lines = useMemo(() => content.split('\n'), [content]);
+
+  const renderLine = useCallback(({ item, index }: { item: string; index: number }) => (
+    <View style={styles.lineContainer}>
+      {showLineNumbers && (
+        <View style={styles.lineNumbersContainer}>
+          <Text style={[styles.lineNumbers, { fontSize }]}>
+            {index + 1}
+          </Text>
+        </View>
+      )}
+      <View style={styles.codeContent}>
+        <Text style={[styles.codeText, { fontSize }]}>{item}</Text>
+      </View>
+    </View>
+  ), [showLineNumbers, fontSize]);
+
   return (
     <View style={styles.container}>
-      <ScrollView
-        style={styles.contentContainer}
-        contentContainerStyle={styles.contentScroll}
-        horizontal={true}
-        showsHorizontalScrollIndicator={true}
+      <FlatList
+        data={lines}
+        renderItem={renderLine}
+        keyExtractor={(_, index) => index.toString()}
+        horizontal={false}
         showsVerticalScrollIndicator={true}
-      >
-        <ScrollView
-          horizontal={false}
-          showsVerticalScrollIndicator={false}
-          style={styles.verticalScroll}
-        >
-          <View style={styles.codeContainer}>
-            {showLineNumbers && (
-              <View style={styles.lineNumbersContainer}>
-                <Text style={[styles.lineNumbers, { fontSize }]}>
-                  {lineNumbers.join('\n')}
-                </Text>
-              </View>
-            )}
-            <View style={styles.codeContent}>
-              <Text style={[styles.codeText, { fontSize }]}>{content}</Text>
-            </View>
-          </View>
-        </ScrollView>
-      </ScrollView>
+        showsHorizontalScrollIndicator={true}
+        contentContainerStyle={styles.contentScroll}
+        style={styles.contentContainer}
+        getItemLayout={(_, index) => ({
+          length: 20,
+          offset: 20 * index,
+          index,
+        })}
+        initialNumToRender={20}
+        maxToRenderPerBatch={10}
+        windowSize={10}
+        removeClippedSubviews={true}
+      />
     </View>
   );
 };
@@ -86,20 +89,18 @@ const styles = StyleSheet.create({
   contentScroll: {
     minWidth: screenWidth,
   },
-  verticalScroll: {
-    flex: 1,
-  },
-  codeContainer: {
+  lineContainer: {
     flexDirection: 'row',
-    minHeight: '100%',
+    minHeight: 20,
   },
   lineNumbersContainer: {
     backgroundColor: '#252526',
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 0,
     borderRightWidth: 1,
     borderRightColor: '#3E3E42',
     minWidth: 40,
+    justifyContent: 'center',
   },
   lineNumbers: {
     color: '#858585',
@@ -110,7 +111,8 @@ const styles = StyleSheet.create({
   codeContent: {
     flex: 1,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 0,
+    justifyContent: 'center',
   },
   codeText: {
     color: '#D4D4D4',

@@ -5,6 +5,8 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Clipboard,
+  Alert,
 } from 'react-native';
 import { FileNode } from '../../state/slices/projectSlice';
 import { Colors } from '../../constants/colors';
@@ -114,6 +116,13 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     setShowLineNumbers((prev) => !prev);
   }, []);
 
+  const handleCopyCode = useCallback(() => {
+    if (content) {
+      Clipboard.setString(content);
+      Alert.alert('成功', '代码已复制到剪贴板');
+    }
+  }, [content]);
+
   if (!file) {
     return (
       <View style={styles.emptyContainer}>
@@ -191,6 +200,9 @@ export const FileViewer: React.FC<FileViewerProps> = ({
           <Text style={[styles.toolbarButtonText, showLineNumbers && styles.toolbarButtonTextActive]}>
             #
           </Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={handleCopyCode} style={styles.toolbarButton}>
+          <Text style={styles.toolbarButtonText}>📋</Text>
         </TouchableOpacity>
       </View>
 
